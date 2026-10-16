@@ -1,4 +1,4 @@
-/* The fast engine: plans of vectorized Stockham passes over the generated kernels.
+/* The fast engine: plans of vectorized passes over the generated kernels.
    1-D complex DFT of size N, unit stride, interleaved, in-place or out-of-place. */
 #ifndef LF_FAST_H
 #define LF_FAST_H
@@ -8,18 +8,21 @@
 
 typedef struct lf_plan lf_plan;
 
-/* Vector length usable for the radix sequence R[0..s-1] (product N), or 0 if no
-   generated kernels cover it. s = 1 means a single scalar small transform. */
-int lf_radices_vl(size_t N, int fwd, int s, const int *R);
+/* Schedules of a radix sequence (all compute the same operations, bit for bit):
+   LF_STOCKHAM: out-of-place passes between two split work arrays;
+   LF_FUSED: whole transform N = R[0]*R[1] in registers;
+   LF_INPLACE: digit-reversed first pass into `out`, then in-place passes. */
+enum { LF_STOCKHAM = 0, LF_FUSED = 1, LF_INPLACE = 2 };
+
+/* Vector length usable for the radix sequence R[0..s-1] (product N) in the given
+   schedule, or 0 if no generated kernels cover it. s = 1 (LF_STOCKHAM only) means a
+   single scalar small transform. */
+int lf_mode_vl(size_t N, int fwd, int s, const int *R, int mode);
 
 /* Build a plan for the radix sequence. base[2m], base[2m+1] = re, im of omega_N^m (m < N),
    as computed by Lean (lfftw_fast_base_table); the pass tables are gathered from it.
    Returns NULL if unsupported. */
-lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base, int fuse);
-
-/* Vector length of the fused (in-register) two-pass kernel for R[0..1], or 0. With
-   fuse = 1, lf_plan_radices builds the fused variant. */
-int lf_fused_vl(size_t N, int fwd, int s, const int *R);
+lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base, int mode);
 
 /* Execute: in and out are interleaved arrays of N complex values; in == out allowed. */
 void lf_execute(const lf_plan *p, const double *in, double *out);

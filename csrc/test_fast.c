@@ -51,7 +51,7 @@ static void check(int s, const int *R, int fuse, void *ctx)
      if (c->N <= 1024 && c->N > 1) { double e = l2err(c->N, c->fwd, c->in, c->ref); if (e > c->maxerr) c->maxerr = e; }
      if (bad) {
           c->nfail++;
-          printf("FAIL N=%zu fwd=%d fuse=%d bad=%d R=", c->N, c->fwd, fuse, bad);
+          printf("FAIL N=%zu fwd=%d mode=%d bad=%d R=", c->N, c->fwd, fuse, bad);
           for (int t = 0; t < s; ++t) printf("%d ", R[t]);
           printf("\n");
      }

@@ -18,6 +18,15 @@ typedef void (*lf_small_fn)(const double *in, double *out);
    tw is the twiddle table of pass 1 of the plan [R1, R2] */
 typedef void (*lf_fused_fn)(const double *in, double *out, const double *restrict tw);
 
+/* in-place schedule (blocked layout: VL re, VL im per block of VL complex numbers) */
+typedef void (*lf_leaf_fn)(const double *restrict in, double *restrict out, size_t N,
+                           const unsigned *restrict gofs, const unsigned *restrict ldel, size_t g0, size_t g1);
+typedef void (*lf_dit_fn)(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1);
+typedef void (*lf_ditlast_fn)(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1);
+lf_leaf_fn lf_get_leaf(int R, int vl, int fwd);
+lf_dit_fn lf_get_dit(int R, int vl, int fwd);
+lf_ditlast_fn lf_get_ditlast(int R, int vl, int fwd);
+
 lf_fused_fn lf_get_fused(int R1, int R2, int vl, int fwd);
 lf_first_fn lf_get_first(int R, int vl, int fwd);
 lf_mid_fn lf_get_mid(int R, int vl, int fwd);

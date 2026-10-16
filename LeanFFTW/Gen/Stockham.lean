@@ -351,6 +351,104 @@ def emitFused (R1 R2 vl : Nat) (fwd : Bool) : String := Id.run do
   ls := ls ++ ["}", ""]
   return joinLines ls
 
+/-! ### In-place decimation-in-time schedule
+
+The same passes (same butterflies, same twiddles, hence the same binary64 results as
+`refTransform`), scheduled in place in the output array, which holds the data in blocks of
+`VL` complex numbers (`VL` real parts, then `VL` imaginary parts) until the last pass writes
+interleaved complex numbers. Pass `t` (`ns = R₀⋯R_{t-1}`) works on the blocks of size
+`ns·R_t` independently: butterfly `(o, q)` reads and writes positions `o + q + r·ns`.
+The first pass reads the input in digit-reversed order: leaf `d` (`d < N/R₀`, inputs
+`d + i·N/R₀`) is written at position `ofs d`; the executor passes `ofs` as the offsets
+`gofs[g]` of groups `d = g·VL` plus lane offsets `ldel[λ]` (`ofs (g·VL+λ) = gofs[g] + ldel[λ]`
+because the radices are powers of two). -/
+
+def leafName (R vl : Nat) (fwd : Bool) : String := s!"lf_leaf_r{R}_v{vl}_{dirTag fwd}"
+def ditName (R vl : Nat) (fwd : Bool) : String := s!"lf_dit_r{R}_v{vl}_{dirTag fwd}"
+def ditLastName (R vl : Nat) (fwd : Bool) : String := s!"lf_ditlast_r{R}_v{vl}_{dirTag fwd}"
+
+/-- First (leaf) pass of the in-place schedule: interleaved `in` → blocked `out`, groups
+`g ∈ [g0, g1)`. Requires `VL ∣ R` and `VL ∣ N/R`. -/
+def emitLeaf (R vl : Nat) (fwd : Bool) : String := Id.run do
+  let t := targetOf vl
+  let ty := t.ty
+  let p := t.pre
+  let k := (butterflyK fwd R false).inst t "    " "" vName
+  let mut ls : List String := [
+    s!"static void {leafName R vl fwd}(const double *restrict in, double *restrict out, size_t N, const unsigned *restrict gofs, const unsigned *restrict ldel, size_t g0, size_t g1) \{",
+    s!"  const size_t NR = N / {R};",
+    s!"  for (size_t g = g0; g < g1; ++g) \{",
+    s!"    const size_t j = g * {vl};",
+    "    double *const ob = out + 2 * (size_t)gofs[g];"]
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"    const {ty} la{r} = {p}_loadu_pd(in + 2 * (j + {r} * NR));",
+      s!"    const {ty} lb{r} = {p}_loadu_pd(in + 2 * (j + {r} * NR) + {vl});",
+      s!"    const {ty} {vName (2 * r)} = lf{vl}_dre(la{r}, lb{r});",
+      s!"    const {ty} {vName (2 * r + 1)} = lf{vl}_dim(la{r}, lb{r});"]
+  ls := ls ++ k.lines
+  for part in [0:2] do
+    for c in [0:R / vl] do
+      let rows := (Array.range vl).map fun i => k.outs[2 * (c * vl + i) + part]!
+      let (decls, cols) := transposeC t s!"q{part}_{c}" rows
+      ls := ls ++ decls
+      for l in [0:vl] do
+        ls := ls ++ [s!"    {p}_storeu_pd(ob + 2 * (size_t)ldel[{l}] + {2 * c * vl + part * vl}, {cols[l]!});"]
+  ls := ls ++ ["  }", "}", ""]
+  return joinLines ls
+
+/-- Loads of an in-place pass: blocked data at `x`, positions `c + r·ns`, and the twiddles. -/
+def ditLoads (R vl : Nat) : List String := Id.run do
+  let t := targetOf vl
+  let mut ls : List String := []
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"      const {t.ty} {vName (2 * r)} = {t.pre}_loadu_pd(x + 2 * (c + {r} * ns));",
+      s!"      const {t.ty} {vName (2 * r + 1)} = {t.pre}_loadu_pd(x + 2 * (c + {r} * ns) + {vl});"]
+  for r in [1:R] do
+    ls := ls ++ [
+      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1))} = {t.pre}_loadu_pd(tw + {2 * (r - 1)} * ns + q);",
+      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1) + 1)} = {t.pre}_loadu_pd(tw + {2 * (r - 1) + 1} * ns + q);"]
+  return ls
+
+/-- Middle pass of the in-place schedule, blocks `b ∈ [b0, b1)` of size `ns·R`. Requires
+`VL ∣ ns`. -/
+def emitDit (R vl : Nat) (fwd : Bool) : String := Id.run do
+  let t := targetOf vl
+  let k := (butterflyK fwd R true).inst t "      " "" vName
+  let mut ls : List String := [
+    s!"static void {ditName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1) \{",
+    "  for (size_t b = b0; b < b1; ++b) {",
+    s!"    for (size_t q = 0; q < ns; q += {vl}) \{",
+    s!"      const size_t c = b * ns * {R} + q;"]
+  ls := ls ++ ditLoads R vl
+  ls := ls ++ k.lines
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"      {t.pre}_storeu_pd(x + 2 * (c + {r} * ns), {k.outs[2 * r]!});",
+      s!"      {t.pre}_storeu_pd(x + 2 * (c + {r} * ns) + {vl}, {k.outs[2 * r + 1]!});"]
+  ls := ls ++ ["    }", "  }", "}", ""]
+  return joinLines ls
+
+/-- Last pass of the in-place schedule (one block, `ns = N/R`): blocked → interleaved, in
+place, butterflies `q ∈ [q0, q1)` (multiples of `VL`). -/
+def emitDitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
+  let t := targetOf vl
+  let k := (butterflyK fwd R true).inst t "      " "" vName
+  let mut ls : List String := [
+    s!"static void {ditLastName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) \{",
+    "  {",
+    s!"    for (size_t q = q0; q < q1; q += {vl}) \{",
+    "      const size_t c = q;"]
+  ls := ls ++ ditLoads R vl
+  ls := ls ++ k.lines
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"      {t.pre}_storeu_pd(x + 2 * (c + {r} * ns), lf{vl}_ilo({k.outs[2 * r]!}, {k.outs[2 * r + 1]!}));",
+      s!"      {t.pre}_storeu_pd(x + 2 * (c + {r} * ns) + {vl}, lf{vl}_ihi({k.outs[2 * r]!}, {k.outs[2 * r + 1]!}));"]
+  ls := ls ++ ["    }", "  }", "}", ""]
+  return joinLines ls
+
 /-- The kernel set of the fast engine. -/
 structure KernelSet where
   /-- `(R, VL)` of first passes -/
@@ -378,6 +476,8 @@ def emitKernels (ks : KernelSet := .default) : String := Id.run do
     for (R, vl) in ks.mid do s := s ++ emitMid R vl fwd ++ emitLast R vl fwd
     for N in ks.small do s := s ++ emitSmall N fwd
     for (R1, R2, vl) in ks.fused do s := s ++ emitFused R1 R2 vl fwd
+    for (R, vl) in ks.first do s := s ++ emitLeaf R vl fwd
+    for (R, vl) in ks.mid do s := s ++ emitDit R vl fwd ++ emitDitLast R vl fwd
   s := s ++ "#include \"lf_kernels.h\"\n\n"
   let look (ty fn : String) (xs : List (Nat × Nat)) (nm : Nat → Nat → Bool → String) : String :=
     joinLines ([s!"{ty} {fn}(int R, int vl, int fwd) \{"] ++
@@ -387,6 +487,9 @@ def emitKernels (ks : KernelSet := .default) : String := Id.run do
   s := s ++ look "lf_first_fn" "lf_get_first" ks.first firstName
   s := s ++ look "lf_mid_fn" "lf_get_mid" ks.mid midName
   s := s ++ look "lf_last_fn" "lf_get_last" ks.mid lastName
+  s := s ++ look "lf_leaf_fn" "lf_get_leaf" ks.first leafName
+  s := s ++ look "lf_dit_fn" "lf_get_dit" ks.mid ditName
+  s := s ++ look "lf_ditlast_fn" "lf_get_ditlast" ks.mid ditLastName
   s := s ++ joinLines (["lf_fused_fn lf_get_fused(int R1, int R2, int vl, int fwd) {"] ++
       (dirs.flatMap fun fwd => ks.fused.map fun (R1, R2, vl) =>
         s!"  if (R1 == {R1} && R2 == {R2} && vl == {vl} && fwd == {if fwd then 1 else 0}) return {fusedName R1 R2 vl fwd};") ++
