@@ -4,6 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef LF_PROFILE
+int lf_dbg_phase = 0;   /* profiling builds: 1 = only the passes < T, 2 = only the others */
+#define LF_PHASE(k) (lf_dbg_phase != (k))
+#else
+#define LF_PHASE(k) 1
+#endif
+
 struct lf_plan {
      size_t N;
      int fwd, s, vl, mode;
@@ -173,31 +180,32 @@ void lf_execute(const lf_plan *p, const double *in, double *out)
           if (T == 0) {
                p->leaf(in, out, N, p->gofs, p->ldel, 0, N / (size_t)p->R[0] / vl, 1);
                for (int t = 1; t < s - 1; ++t)
-                    p->dit[t](out, p->tw + p->twoff[t], nst[t], 0, N / nst[t + 1], 0, nst[t]);
-               p->ditlast(out, p->tw + p->twoff[s - 1], nst[s - 1], 0, nst[s - 1]);
+                    p->dit[t](out, p->tw + p->twoff[t], nst[t], nst[t], 0, N / nst[t + 1], 0, nst[t], 0);
+               p->ditlast(out, p->tw + p->twoff[s - 1], nst[s - 1], nst[s - 1], 0, nst[s - 1], 0);
                return;
           }
-          {
+          if (LF_PHASE(2)) {
                /* passes < T: per group of vl blocks of size nst[T] (leaves dl + l + D m) */
                const size_t D = N / nst[T], gn = nst[T] / (size_t)p->R[0];
                for (size_t dl = 0; dl < D; dl += vl) {
                     p->leaf(in, out, N, p->gofs, p->ldel, dl / vl, gn, D / vl);
                     for (size_t l = 0; l < vl; ++l) {
                          const size_t beta = ((size_t)p->gofs[dl / vl] + p->ldel[l]) / nst[T];
-                         for (int t = 1; t < T; ++t)
-                              p->dit[t](out, p->tw + p->twoff[t], nst[t], beta * (nst[T] / nst[t + 1]),
-                                        (beta + 1) * (nst[T] / nst[t + 1]), 0, nst[t]);
+                         for (int t = 1; t < T && LF_PHASE(3); ++t)
+                              p->dit[t](out, p->tw + p->twoff[t], nst[t], nst[t], beta * (nst[T] / nst[t + 1]),
+                                        (beta + 1) * (nst[T] / nst[t + 1]), 0, nst[t], 0);
                     }
                }
           }
+          if (!LF_PHASE(1) || !LF_PHASE(3)) return;
           {
                /* passes >= T, on the positions q + j nst[T] for q in chunks of Q */
                const size_t Q = p->Q ? p->Q : nst[T];
                for (size_t q0 = 0; q0 < nst[T]; q0 += Q)
                     for (int t = T; t < s; ++t)
                          for (size_t a = q0; a < nst[t]; a += nst[T]) {
-                              if (t < s - 1) p->dit[t](out, p->tw + p->twoff[t], nst[t], 0, N / nst[t + 1], a, a + Q);
-                              else p->ditlast(out, p->tw + p->twoff[t], nst[t], a, a + Q);
+                              if (t < s - 1) p->dit[t](out, p->tw + p->twoff[t], nst[t], nst[t], 0, N / nst[t + 1], a, a + Q, 0);
+                              else p->ditlast(out, p->tw + p->twoff[t], nst[t], nst[t], a, a + Q, 0);
                          }
           }
           return;

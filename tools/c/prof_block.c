@@ -27,14 +27,20 @@ int main(int argc, char **argv)
      for (size_t i = 0; i < 2 * N; ++i) in[i] = (double)(i % 7) - 3.0;
      lf_plan *p = lf_plan_radices(N, 1, s, R, base, LF_INPLACE);
      if (!p) { puts("no plan"); return 1; }
+     double *ref = aligned_alloc(64, 16 * N);
+     lf_execute(p, in, ref);
      for (int T = 0; T < s; ++T)
           for (size_t qi = 0; qi < sizeof Qs / sizeof Qs[0]; ++qi)
                if (lf_set_blocking(p, T, Qs[qi])) {
                     double a, b, c;
-                    lf_dbg_phase = 0; a = timeit(p, in, out);
+                    lf_dbg_phase = 0;
+                    lf_execute(p, in, out);
+                    if (memcmp(out, ref, 16 * N)) printf("MISMATCH ");
+                    a = timeit(p, in, out);
                     lf_dbg_phase = 1; b = timeit(p, in, out);
                     lf_dbg_phase = 2; c = timeit(p, in, out);
-                    printf("T=%d Q=%-5zu %10.1f ns  (inner %10.1f, outer %10.1f)\n", T, Qs[qi], a * 1e9, b * 1e9, c * 1e9);
+                    lf_dbg_phase = 3; double d = timeit(p, in, out);
+                    printf("T=%d Q=%-5zu %10.1f ns  (inner %10.1f, outer %10.1f, leaf %10.1f)\n", T, Qs[qi], a * 1e9, b * 1e9, c * 1e9, d * 1e9);
                }
      return 0;
 }

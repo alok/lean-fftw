@@ -58,12 +58,74 @@ static void check(int s, const int *R, int fuse, void *ctx)
      lf_destroy(p);
 }
 
+/* cache-blocked in-place plans (lf_set_blocking) of large sizes */
+struct bl { int n; int s[64]; int R[64][LF_MAXPASS]; };
+
+static void pick(int s, const int *R, int mode, void *ctx)
+{
+     struct bl *b = ctx;
+     if (mode != LF_INPLACE || s < 3 || b->n == 64) return;
+     b->s[b->n] = s;
+     memcpy(b->R[b->n], R, (size_t)s * sizeof(int));
+     b->n++;
+}
+
+static long check_blocked(size_t N, int fwd, long *nplans)
+{
+     static const size_t Qs[] = { 0, 8, 32, 128 };
+     struct bl b;
+     size_t n2 = 2 * N;
+     long nfail = 0;
+     double *in = malloc(n2 * sizeof(double)), *ref = malloc(n2 * sizeof(double));
+     double *out = malloc(n2 * sizeof(double)), *base = lf_lean_base_table(N, fwd);
+     for (size_t i = 0; i < n2; ++i) in[i] = rnd();
+     b.n = 0;
+     lf_enumerate(N, fwd, pick, &b);
+     /* three sequences spread over the enumeration order */
+     for (int k = 0; k < 3 && b.n; ++k) {
+          int i = k * (b.n - 1) / 2, s = b.s[i];
+          const int *R = b.R[i];
+          lf_lean_reference(N, fwd, s, R, in, ref);
+          for (int T = 0; T < s; ++T)
+               for (size_t q = 0; q < sizeof Qs / sizeof Qs[0]; ++q) {
+                    lf_plan *p = lf_plan_radices(N, fwd, s, R, base, LF_INPLACE);
+                    int bad = 0;
+                    if (!p) continue;
+                    if ((T || Qs[q]) && !lf_set_blocking(p, T, Qs[q])) { lf_destroy(p); continue; }
+                    lf_execute(p, in, out);
+                    if (memcmp(out, ref, n2 * sizeof(double))) bad |= 1;
+                    memcpy(out, in, n2 * sizeof(double));
+                    lf_execute(p, out, out);
+                    if (memcmp(out, ref, n2 * sizeof(double))) bad |= 2;
+                    ++*nplans;
+                    if (bad) {
+                         nfail++;
+                         printf("FAIL blocked N=%zu fwd=%d T=%d Q=%zu bad=%d R=", N, fwd, T, Qs[q], bad);
+                         for (int t = 0; t < s; ++t) printf("%d ", R[t]);
+                         printf("\n");
+                    }
+                    lf_destroy(p);
+               }
+     }
+     free(in); free(ref); free(out); free(base);
+     return nfail;
+}
+
 int main(int argc, char **argv)
 {
      int maxlg = argc > 1 ? atoi(argv[1]) : 12;
+     int blk = argc > 2 ? atoi(argv[2]) : 0;
+     int minlg = argc > 3 ? atoi(argv[3]) : 0;
      long tot = 0, fail = 0;
      lf_lean_init();
-     for (int lg = 0; lg <= maxlg; ++lg)
+     for (int lg = 15; lg <= blk; ++lg)
+          for (int fwd = 0; fwd <= 1; ++fwd) {
+               long np = 0, nf = check_blocked((size_t)1 << lg, fwd, &np);
+               printf("blocked N=%zu fwd=%d plans=%ld fail=%ld\n", (size_t)1 << lg, fwd, np, nf);
+               fflush(stdout);
+               tot += np; fail += nf;
+          }
+     for (int lg = minlg; lg <= maxlg; ++lg)
           for (int fwd = 0; fwd <= 1; ++fwd) {
                struct tc c;
                size_t N = (size_t)1 << lg;

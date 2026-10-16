@@ -397,7 +397,9 @@ def emitLeaf (R vl : Nat) (fwd : Bool) : String := Id.run do
   ls := ls ++ ["  }", "}", ""]
   return joinLines ls
 
-/-- Loads of an in-place pass: blocked data at `x`, positions `c + r·ns`, and the twiddles. -/
+/-- Loads of an in-place pass: blocked data at `x`, positions `c + r·ns`, and the twiddles
+`(r, q + tq)` of a table with rows of length `tns` (`tns = ns`, `tq = 0` except when the
+data are a copy of some rows in a buffer). -/
 def ditLoads (R vl : Nat) : List String := Id.run do
   let t := targetOf vl
   let mut ls : List String := []
@@ -407,8 +409,8 @@ def ditLoads (R vl : Nat) : List String := Id.run do
       s!"      const {t.ty} {vName (2 * r + 1)} = {t.pre}_loadu_pd(x + 2 * (c + {r} * ns) + {vl});"]
   for r in [1:R] do
     ls := ls ++ [
-      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1))} = {t.pre}_loadu_pd(tw + {2 * (r - 1)} * ns + q);",
-      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1) + 1)} = {t.pre}_loadu_pd(tw + {2 * (r - 1) + 1} * ns + q);"]
+      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1))} = {t.pre}_loadu_pd(tw + {2 * (r - 1)} * tns + q + tq);",
+      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1) + 1)} = {t.pre}_loadu_pd(tw + {2 * (r - 1) + 1} * tns + q + tq);"]
   return ls
 
 /-- Middle pass of the in-place schedule, blocks `b ∈ [b0, b1)` of size `ns·R`, butterflies
@@ -417,7 +419,7 @@ def emitDit (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let k := (butterflyK fwd R true).inst t "      " "" vName
   let mut ls : List String := [
-    s!"static void {ditName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) \{",
+    s!"static void {ditName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) \{",
     "  for (size_t b = b0; b < b1; ++b) {",
     s!"    for (size_t q = q0; q < q1; q += {vl}) \{",
     s!"      const size_t c = b * ns * {R} + q;"]
@@ -436,7 +438,7 @@ def emitDitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let k := (butterflyK fwd R true).inst t "      " "" vName
   let mut ls : List String := [
-    s!"static void {ditLastName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) \{",
+    s!"static void {ditLastName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) \{",
     "  {",
     s!"    for (size_t q = q0; q < q1; q += {vl}) \{",
     "      const size_t c = q;"]

@@ -18320,7 +18320,7 @@ static void lf_leaf_r32_v8_f(const double *restrict in, double *restrict out, si
   }
 }
 
-static void lf_dit_r2_v4_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r2_v4_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = b * ns * 2 + q;
@@ -18328,8 +18328,8 @@ static void lf_dit_r2_v4_f(double *x, const double *restrict tw, size_t ns, size
       const __m256d v1 = _mm256_loadu_pd(x + 2 * (c + 0 * ns) + 4);
       const __m256d v2 = _mm256_loadu_pd(x + 2 * (c + 1 * ns));
       const __m256d v3 = _mm256_loadu_pd(x + 2 * (c + 1 * ns) + 4);
-      const __m256d v4 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v5 = _mm256_loadu_pd(tw + 1 * ns + q);
+      const __m256d v4 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v5 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
       const __m256d t6 = _mm256_mul_pd(v3, v5);
       const __m256d t7 = _mm256_fmsub_pd(v2, v4, t6);
       const __m256d t8 = _mm256_add_pd(v0, t7);
@@ -18346,7 +18346,7 @@ static void lf_dit_r2_v4_f(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r2_v4_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r2_v4_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = q;
@@ -18354,8 +18354,8 @@ static void lf_ditlast_r2_v4_f(double *x, const double *restrict tw, size_t ns, 
       const __m256d v1 = _mm256_loadu_pd(x + 2 * (c + 0 * ns) + 4);
       const __m256d v2 = _mm256_loadu_pd(x + 2 * (c + 1 * ns));
       const __m256d v3 = _mm256_loadu_pd(x + 2 * (c + 1 * ns) + 4);
-      const __m256d v4 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v5 = _mm256_loadu_pd(tw + 1 * ns + q);
+      const __m256d v4 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v5 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
       const __m256d t6 = _mm256_mul_pd(v3, v5);
       const __m256d t7 = _mm256_fmsub_pd(v2, v4, t6);
       const __m256d t8 = _mm256_add_pd(v0, t7);
@@ -18372,7 +18372,7 @@ static void lf_ditlast_r2_v4_f(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r4_v4_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r4_v4_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = b * ns * 4 + q;
@@ -18384,12 +18384,12 @@ static void lf_dit_r4_v4_f(double *x, const double *restrict tw, size_t ns, size
       const __m256d v5 = _mm256_loadu_pd(x + 2 * (c + 2 * ns) + 4);
       const __m256d v6 = _mm256_loadu_pd(x + 2 * (c + 3 * ns));
       const __m256d v7 = _mm256_loadu_pd(x + 2 * (c + 3 * ns) + 4);
-      const __m256d v8 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v9 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v10 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v11 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v12 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v13 = _mm256_loadu_pd(tw + 5 * ns + q);
+      const __m256d v8 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v9 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v10 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v11 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v12 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v13 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
       const __m256d t14 = _mm256_mul_pd(v5, v11);
       const __m256d t15 = _mm256_fmsub_pd(v4, v10, t14);
       const __m256d t16 = _mm256_add_pd(v0, t15);
@@ -18430,7 +18430,7 @@ static void lf_dit_r4_v4_f(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r4_v4_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r4_v4_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = q;
@@ -18442,12 +18442,12 @@ static void lf_ditlast_r4_v4_f(double *x, const double *restrict tw, size_t ns, 
       const __m256d v5 = _mm256_loadu_pd(x + 2 * (c + 2 * ns) + 4);
       const __m256d v6 = _mm256_loadu_pd(x + 2 * (c + 3 * ns));
       const __m256d v7 = _mm256_loadu_pd(x + 2 * (c + 3 * ns) + 4);
-      const __m256d v8 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v9 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v10 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v11 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v12 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v13 = _mm256_loadu_pd(tw + 5 * ns + q);
+      const __m256d v8 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v9 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v10 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v11 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v12 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v13 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
       const __m256d t14 = _mm256_mul_pd(v5, v11);
       const __m256d t15 = _mm256_fmsub_pd(v4, v10, t14);
       const __m256d t16 = _mm256_add_pd(v0, t15);
@@ -18488,7 +18488,7 @@ static void lf_ditlast_r4_v4_f(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r8_v4_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r8_v4_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = b * ns * 8 + q;
@@ -18508,20 +18508,20 @@ static void lf_dit_r8_v4_f(double *x, const double *restrict tw, size_t ns, size
       const __m256d v13 = _mm256_loadu_pd(x + 2 * (c + 6 * ns) + 4);
       const __m256d v14 = _mm256_loadu_pd(x + 2 * (c + 7 * ns));
       const __m256d v15 = _mm256_loadu_pd(x + 2 * (c + 7 * ns) + 4);
-      const __m256d v16 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v17 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v18 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v19 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v20 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v21 = _mm256_loadu_pd(tw + 5 * ns + q);
-      const __m256d v22 = _mm256_loadu_pd(tw + 6 * ns + q);
-      const __m256d v23 = _mm256_loadu_pd(tw + 7 * ns + q);
-      const __m256d v24 = _mm256_loadu_pd(tw + 8 * ns + q);
-      const __m256d v25 = _mm256_loadu_pd(tw + 9 * ns + q);
-      const __m256d v26 = _mm256_loadu_pd(tw + 10 * ns + q);
-      const __m256d v27 = _mm256_loadu_pd(tw + 11 * ns + q);
-      const __m256d v28 = _mm256_loadu_pd(tw + 12 * ns + q);
-      const __m256d v29 = _mm256_loadu_pd(tw + 13 * ns + q);
+      const __m256d v16 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v17 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v18 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v19 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v20 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v21 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
+      const __m256d v22 = _mm256_loadu_pd(tw + 6 * tns + q + tq);
+      const __m256d v23 = _mm256_loadu_pd(tw + 7 * tns + q + tq);
+      const __m256d v24 = _mm256_loadu_pd(tw + 8 * tns + q + tq);
+      const __m256d v25 = _mm256_loadu_pd(tw + 9 * tns + q + tq);
+      const __m256d v26 = _mm256_loadu_pd(tw + 10 * tns + q + tq);
+      const __m256d v27 = _mm256_loadu_pd(tw + 11 * tns + q + tq);
+      const __m256d v28 = _mm256_loadu_pd(tw + 12 * tns + q + tq);
+      const __m256d v29 = _mm256_loadu_pd(tw + 13 * tns + q + tq);
       const __m256d t30 = _mm256_mul_pd(v9, v23);
       const __m256d t31 = _mm256_fmsub_pd(v8, v22, t30);
       const __m256d t32 = _mm256_add_pd(v0, t31);
@@ -18623,7 +18623,7 @@ static void lf_dit_r8_v4_f(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r8_v4_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r8_v4_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = q;
@@ -18643,20 +18643,20 @@ static void lf_ditlast_r8_v4_f(double *x, const double *restrict tw, size_t ns, 
       const __m256d v13 = _mm256_loadu_pd(x + 2 * (c + 6 * ns) + 4);
       const __m256d v14 = _mm256_loadu_pd(x + 2 * (c + 7 * ns));
       const __m256d v15 = _mm256_loadu_pd(x + 2 * (c + 7 * ns) + 4);
-      const __m256d v16 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v17 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v18 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v19 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v20 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v21 = _mm256_loadu_pd(tw + 5 * ns + q);
-      const __m256d v22 = _mm256_loadu_pd(tw + 6 * ns + q);
-      const __m256d v23 = _mm256_loadu_pd(tw + 7 * ns + q);
-      const __m256d v24 = _mm256_loadu_pd(tw + 8 * ns + q);
-      const __m256d v25 = _mm256_loadu_pd(tw + 9 * ns + q);
-      const __m256d v26 = _mm256_loadu_pd(tw + 10 * ns + q);
-      const __m256d v27 = _mm256_loadu_pd(tw + 11 * ns + q);
-      const __m256d v28 = _mm256_loadu_pd(tw + 12 * ns + q);
-      const __m256d v29 = _mm256_loadu_pd(tw + 13 * ns + q);
+      const __m256d v16 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v17 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v18 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v19 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v20 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v21 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
+      const __m256d v22 = _mm256_loadu_pd(tw + 6 * tns + q + tq);
+      const __m256d v23 = _mm256_loadu_pd(tw + 7 * tns + q + tq);
+      const __m256d v24 = _mm256_loadu_pd(tw + 8 * tns + q + tq);
+      const __m256d v25 = _mm256_loadu_pd(tw + 9 * tns + q + tq);
+      const __m256d v26 = _mm256_loadu_pd(tw + 10 * tns + q + tq);
+      const __m256d v27 = _mm256_loadu_pd(tw + 11 * tns + q + tq);
+      const __m256d v28 = _mm256_loadu_pd(tw + 12 * tns + q + tq);
+      const __m256d v29 = _mm256_loadu_pd(tw + 13 * tns + q + tq);
       const __m256d t30 = _mm256_mul_pd(v9, v23);
       const __m256d t31 = _mm256_fmsub_pd(v8, v22, t30);
       const __m256d t32 = _mm256_add_pd(v0, t31);
@@ -18758,7 +18758,7 @@ static void lf_ditlast_r8_v4_f(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r2_v8_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r2_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 2 + q;
@@ -18766,8 +18766,8 @@ static void lf_dit_r2_v8_f(double *x, const double *restrict tw, size_t ns, size
       const __m512d v1 = _mm512_loadu_pd(x + 2 * (c + 0 * ns) + 8);
       const __m512d v2 = _mm512_loadu_pd(x + 2 * (c + 1 * ns));
       const __m512d v3 = _mm512_loadu_pd(x + 2 * (c + 1 * ns) + 8);
-      const __m512d v4 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v5 = _mm512_loadu_pd(tw + 1 * ns + q);
+      const __m512d v4 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v5 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
       const __m512d t6 = _mm512_mul_pd(v3, v5);
       const __m512d t7 = _mm512_fmsub_pd(v2, v4, t6);
       const __m512d t8 = _mm512_add_pd(v0, t7);
@@ -18784,7 +18784,7 @@ static void lf_dit_r2_v8_f(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r2_v8_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r2_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -18792,8 +18792,8 @@ static void lf_ditlast_r2_v8_f(double *x, const double *restrict tw, size_t ns, 
       const __m512d v1 = _mm512_loadu_pd(x + 2 * (c + 0 * ns) + 8);
       const __m512d v2 = _mm512_loadu_pd(x + 2 * (c + 1 * ns));
       const __m512d v3 = _mm512_loadu_pd(x + 2 * (c + 1 * ns) + 8);
-      const __m512d v4 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v5 = _mm512_loadu_pd(tw + 1 * ns + q);
+      const __m512d v4 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v5 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
       const __m512d t6 = _mm512_mul_pd(v3, v5);
       const __m512d t7 = _mm512_fmsub_pd(v2, v4, t6);
       const __m512d t8 = _mm512_add_pd(v0, t7);
@@ -18810,7 +18810,7 @@ static void lf_ditlast_r2_v8_f(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r4_v8_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r4_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 4 + q;
@@ -18822,12 +18822,12 @@ static void lf_dit_r4_v8_f(double *x, const double *restrict tw, size_t ns, size
       const __m512d v5 = _mm512_loadu_pd(x + 2 * (c + 2 * ns) + 8);
       const __m512d v6 = _mm512_loadu_pd(x + 2 * (c + 3 * ns));
       const __m512d v7 = _mm512_loadu_pd(x + 2 * (c + 3 * ns) + 8);
-      const __m512d v8 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v9 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v10 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v11 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v12 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v13 = _mm512_loadu_pd(tw + 5 * ns + q);
+      const __m512d v8 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v9 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v10 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v11 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v12 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v13 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
       const __m512d t14 = _mm512_mul_pd(v5, v11);
       const __m512d t15 = _mm512_fmsub_pd(v4, v10, t14);
       const __m512d t16 = _mm512_add_pd(v0, t15);
@@ -18868,7 +18868,7 @@ static void lf_dit_r4_v8_f(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r4_v8_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r4_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -18880,12 +18880,12 @@ static void lf_ditlast_r4_v8_f(double *x, const double *restrict tw, size_t ns, 
       const __m512d v5 = _mm512_loadu_pd(x + 2 * (c + 2 * ns) + 8);
       const __m512d v6 = _mm512_loadu_pd(x + 2 * (c + 3 * ns));
       const __m512d v7 = _mm512_loadu_pd(x + 2 * (c + 3 * ns) + 8);
-      const __m512d v8 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v9 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v10 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v11 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v12 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v13 = _mm512_loadu_pd(tw + 5 * ns + q);
+      const __m512d v8 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v9 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v10 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v11 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v12 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v13 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
       const __m512d t14 = _mm512_mul_pd(v5, v11);
       const __m512d t15 = _mm512_fmsub_pd(v4, v10, t14);
       const __m512d t16 = _mm512_add_pd(v0, t15);
@@ -18926,7 +18926,7 @@ static void lf_ditlast_r4_v8_f(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r8_v8_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r8_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 8 + q;
@@ -18946,20 +18946,20 @@ static void lf_dit_r8_v8_f(double *x, const double *restrict tw, size_t ns, size
       const __m512d v13 = _mm512_loadu_pd(x + 2 * (c + 6 * ns) + 8);
       const __m512d v14 = _mm512_loadu_pd(x + 2 * (c + 7 * ns));
       const __m512d v15 = _mm512_loadu_pd(x + 2 * (c + 7 * ns) + 8);
-      const __m512d v16 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v17 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v18 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v19 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v20 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v21 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v22 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v23 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v24 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v25 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v26 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v27 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v28 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v29 = _mm512_loadu_pd(tw + 13 * ns + q);
+      const __m512d v16 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v17 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v18 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v19 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v20 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v21 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v22 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v23 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v24 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v25 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v26 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v27 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v28 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v29 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
       const __m512d t30 = _mm512_mul_pd(v9, v23);
       const __m512d t31 = _mm512_fmsub_pd(v8, v22, t30);
       const __m512d t32 = _mm512_add_pd(v0, t31);
@@ -19061,7 +19061,7 @@ static void lf_dit_r8_v8_f(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r8_v8_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r8_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -19081,20 +19081,20 @@ static void lf_ditlast_r8_v8_f(double *x, const double *restrict tw, size_t ns, 
       const __m512d v13 = _mm512_loadu_pd(x + 2 * (c + 6 * ns) + 8);
       const __m512d v14 = _mm512_loadu_pd(x + 2 * (c + 7 * ns));
       const __m512d v15 = _mm512_loadu_pd(x + 2 * (c + 7 * ns) + 8);
-      const __m512d v16 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v17 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v18 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v19 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v20 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v21 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v22 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v23 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v24 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v25 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v26 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v27 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v28 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v29 = _mm512_loadu_pd(tw + 13 * ns + q);
+      const __m512d v16 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v17 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v18 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v19 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v20 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v21 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v22 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v23 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v24 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v25 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v26 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v27 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v28 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v29 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
       const __m512d t30 = _mm512_mul_pd(v9, v23);
       const __m512d t31 = _mm512_fmsub_pd(v8, v22, t30);
       const __m512d t32 = _mm512_add_pd(v0, t31);
@@ -19196,7 +19196,7 @@ static void lf_ditlast_r8_v8_f(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r16_v8_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r16_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 16 + q;
@@ -19232,36 +19232,36 @@ static void lf_dit_r16_v8_f(double *x, const double *restrict tw, size_t ns, siz
       const __m512d v29 = _mm512_loadu_pd(x + 2 * (c + 14 * ns) + 8);
       const __m512d v30 = _mm512_loadu_pd(x + 2 * (c + 15 * ns));
       const __m512d v31 = _mm512_loadu_pd(x + 2 * (c + 15 * ns) + 8);
-      const __m512d v32 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v33 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v34 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v35 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v36 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v37 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v38 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v39 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v40 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v41 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v42 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v43 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v44 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v45 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v46 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v47 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v48 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v49 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v50 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v51 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v52 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v53 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v54 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v55 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v56 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v57 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v58 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v59 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v60 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v61 = _mm512_loadu_pd(tw + 29 * ns + q);
+      const __m512d v32 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v33 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v34 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v35 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v36 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v37 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v38 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v39 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v40 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v41 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v42 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v43 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v44 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v45 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v46 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v47 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v48 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v49 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v50 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v51 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v52 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v53 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v54 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v55 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v56 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v57 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v58 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v59 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v60 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v61 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
       const __m512d t62 = _mm512_mul_pd(v17, v47);
       const __m512d t63 = _mm512_fmsub_pd(v16, v46, t62);
       const __m512d t64 = _mm512_add_pd(v0, t63);
@@ -19519,7 +19519,7 @@ static void lf_dit_r16_v8_f(double *x, const double *restrict tw, size_t ns, siz
   }
 }
 
-static void lf_ditlast_r16_v8_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r16_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -19555,36 +19555,36 @@ static void lf_ditlast_r16_v8_f(double *x, const double *restrict tw, size_t ns,
       const __m512d v29 = _mm512_loadu_pd(x + 2 * (c + 14 * ns) + 8);
       const __m512d v30 = _mm512_loadu_pd(x + 2 * (c + 15 * ns));
       const __m512d v31 = _mm512_loadu_pd(x + 2 * (c + 15 * ns) + 8);
-      const __m512d v32 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v33 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v34 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v35 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v36 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v37 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v38 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v39 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v40 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v41 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v42 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v43 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v44 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v45 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v46 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v47 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v48 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v49 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v50 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v51 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v52 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v53 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v54 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v55 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v56 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v57 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v58 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v59 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v60 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v61 = _mm512_loadu_pd(tw + 29 * ns + q);
+      const __m512d v32 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v33 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v34 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v35 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v36 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v37 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v38 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v39 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v40 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v41 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v42 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v43 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v44 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v45 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v46 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v47 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v48 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v49 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v50 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v51 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v52 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v53 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v54 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v55 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v56 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v57 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v58 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v59 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v60 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v61 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
       const __m512d t62 = _mm512_mul_pd(v17, v47);
       const __m512d t63 = _mm512_fmsub_pd(v16, v46, t62);
       const __m512d t64 = _mm512_add_pd(v0, t63);
@@ -19842,7 +19842,7 @@ static void lf_ditlast_r16_v8_f(double *x, const double *restrict tw, size_t ns,
   }
 }
 
-static void lf_dit_r32_v8_f(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r32_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 32 + q;
@@ -19910,68 +19910,68 @@ static void lf_dit_r32_v8_f(double *x, const double *restrict tw, size_t ns, siz
       const __m512d v61 = _mm512_loadu_pd(x + 2 * (c + 30 * ns) + 8);
       const __m512d v62 = _mm512_loadu_pd(x + 2 * (c + 31 * ns));
       const __m512d v63 = _mm512_loadu_pd(x + 2 * (c + 31 * ns) + 8);
-      const __m512d v64 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v65 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v66 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v67 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v68 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v69 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v70 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v71 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v72 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v73 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v74 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v75 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v76 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v77 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v78 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v79 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v80 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v81 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v82 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v83 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v84 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v85 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v86 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v87 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v88 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v89 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v90 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v91 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v92 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v93 = _mm512_loadu_pd(tw + 29 * ns + q);
-      const __m512d v94 = _mm512_loadu_pd(tw + 30 * ns + q);
-      const __m512d v95 = _mm512_loadu_pd(tw + 31 * ns + q);
-      const __m512d v96 = _mm512_loadu_pd(tw + 32 * ns + q);
-      const __m512d v97 = _mm512_loadu_pd(tw + 33 * ns + q);
-      const __m512d v98 = _mm512_loadu_pd(tw + 34 * ns + q);
-      const __m512d v99 = _mm512_loadu_pd(tw + 35 * ns + q);
-      const __m512d v100 = _mm512_loadu_pd(tw + 36 * ns + q);
-      const __m512d v101 = _mm512_loadu_pd(tw + 37 * ns + q);
-      const __m512d v102 = _mm512_loadu_pd(tw + 38 * ns + q);
-      const __m512d v103 = _mm512_loadu_pd(tw + 39 * ns + q);
-      const __m512d v104 = _mm512_loadu_pd(tw + 40 * ns + q);
-      const __m512d v105 = _mm512_loadu_pd(tw + 41 * ns + q);
-      const __m512d v106 = _mm512_loadu_pd(tw + 42 * ns + q);
-      const __m512d v107 = _mm512_loadu_pd(tw + 43 * ns + q);
-      const __m512d v108 = _mm512_loadu_pd(tw + 44 * ns + q);
-      const __m512d v109 = _mm512_loadu_pd(tw + 45 * ns + q);
-      const __m512d v110 = _mm512_loadu_pd(tw + 46 * ns + q);
-      const __m512d v111 = _mm512_loadu_pd(tw + 47 * ns + q);
-      const __m512d v112 = _mm512_loadu_pd(tw + 48 * ns + q);
-      const __m512d v113 = _mm512_loadu_pd(tw + 49 * ns + q);
-      const __m512d v114 = _mm512_loadu_pd(tw + 50 * ns + q);
-      const __m512d v115 = _mm512_loadu_pd(tw + 51 * ns + q);
-      const __m512d v116 = _mm512_loadu_pd(tw + 52 * ns + q);
-      const __m512d v117 = _mm512_loadu_pd(tw + 53 * ns + q);
-      const __m512d v118 = _mm512_loadu_pd(tw + 54 * ns + q);
-      const __m512d v119 = _mm512_loadu_pd(tw + 55 * ns + q);
-      const __m512d v120 = _mm512_loadu_pd(tw + 56 * ns + q);
-      const __m512d v121 = _mm512_loadu_pd(tw + 57 * ns + q);
-      const __m512d v122 = _mm512_loadu_pd(tw + 58 * ns + q);
-      const __m512d v123 = _mm512_loadu_pd(tw + 59 * ns + q);
-      const __m512d v124 = _mm512_loadu_pd(tw + 60 * ns + q);
-      const __m512d v125 = _mm512_loadu_pd(tw + 61 * ns + q);
+      const __m512d v64 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v65 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v66 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v67 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v68 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v69 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v70 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v71 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v72 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v73 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v74 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v75 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v76 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v77 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v78 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v79 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v80 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v81 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v82 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v83 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v84 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v85 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v86 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v87 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v88 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v89 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v90 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v91 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v92 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v93 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
+      const __m512d v94 = _mm512_loadu_pd(tw + 30 * tns + q + tq);
+      const __m512d v95 = _mm512_loadu_pd(tw + 31 * tns + q + tq);
+      const __m512d v96 = _mm512_loadu_pd(tw + 32 * tns + q + tq);
+      const __m512d v97 = _mm512_loadu_pd(tw + 33 * tns + q + tq);
+      const __m512d v98 = _mm512_loadu_pd(tw + 34 * tns + q + tq);
+      const __m512d v99 = _mm512_loadu_pd(tw + 35 * tns + q + tq);
+      const __m512d v100 = _mm512_loadu_pd(tw + 36 * tns + q + tq);
+      const __m512d v101 = _mm512_loadu_pd(tw + 37 * tns + q + tq);
+      const __m512d v102 = _mm512_loadu_pd(tw + 38 * tns + q + tq);
+      const __m512d v103 = _mm512_loadu_pd(tw + 39 * tns + q + tq);
+      const __m512d v104 = _mm512_loadu_pd(tw + 40 * tns + q + tq);
+      const __m512d v105 = _mm512_loadu_pd(tw + 41 * tns + q + tq);
+      const __m512d v106 = _mm512_loadu_pd(tw + 42 * tns + q + tq);
+      const __m512d v107 = _mm512_loadu_pd(tw + 43 * tns + q + tq);
+      const __m512d v108 = _mm512_loadu_pd(tw + 44 * tns + q + tq);
+      const __m512d v109 = _mm512_loadu_pd(tw + 45 * tns + q + tq);
+      const __m512d v110 = _mm512_loadu_pd(tw + 46 * tns + q + tq);
+      const __m512d v111 = _mm512_loadu_pd(tw + 47 * tns + q + tq);
+      const __m512d v112 = _mm512_loadu_pd(tw + 48 * tns + q + tq);
+      const __m512d v113 = _mm512_loadu_pd(tw + 49 * tns + q + tq);
+      const __m512d v114 = _mm512_loadu_pd(tw + 50 * tns + q + tq);
+      const __m512d v115 = _mm512_loadu_pd(tw + 51 * tns + q + tq);
+      const __m512d v116 = _mm512_loadu_pd(tw + 52 * tns + q + tq);
+      const __m512d v117 = _mm512_loadu_pd(tw + 53 * tns + q + tq);
+      const __m512d v118 = _mm512_loadu_pd(tw + 54 * tns + q + tq);
+      const __m512d v119 = _mm512_loadu_pd(tw + 55 * tns + q + tq);
+      const __m512d v120 = _mm512_loadu_pd(tw + 56 * tns + q + tq);
+      const __m512d v121 = _mm512_loadu_pd(tw + 57 * tns + q + tq);
+      const __m512d v122 = _mm512_loadu_pd(tw + 58 * tns + q + tq);
+      const __m512d v123 = _mm512_loadu_pd(tw + 59 * tns + q + tq);
+      const __m512d v124 = _mm512_loadu_pd(tw + 60 * tns + q + tq);
+      const __m512d v125 = _mm512_loadu_pd(tw + 61 * tns + q + tq);
       const __m512d t126 = _mm512_mul_pd(v33, v95);
       const __m512d t127 = _mm512_fmsub_pd(v32, v94, t126);
       const __m512d t128 = _mm512_add_pd(v0, t127);
@@ -20609,7 +20609,7 @@ static void lf_dit_r32_v8_f(double *x, const double *restrict tw, size_t ns, siz
   }
 }
 
-static void lf_ditlast_r32_v8_f(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r32_v8_f(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -20677,68 +20677,68 @@ static void lf_ditlast_r32_v8_f(double *x, const double *restrict tw, size_t ns,
       const __m512d v61 = _mm512_loadu_pd(x + 2 * (c + 30 * ns) + 8);
       const __m512d v62 = _mm512_loadu_pd(x + 2 * (c + 31 * ns));
       const __m512d v63 = _mm512_loadu_pd(x + 2 * (c + 31 * ns) + 8);
-      const __m512d v64 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v65 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v66 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v67 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v68 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v69 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v70 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v71 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v72 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v73 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v74 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v75 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v76 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v77 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v78 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v79 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v80 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v81 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v82 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v83 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v84 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v85 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v86 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v87 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v88 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v89 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v90 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v91 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v92 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v93 = _mm512_loadu_pd(tw + 29 * ns + q);
-      const __m512d v94 = _mm512_loadu_pd(tw + 30 * ns + q);
-      const __m512d v95 = _mm512_loadu_pd(tw + 31 * ns + q);
-      const __m512d v96 = _mm512_loadu_pd(tw + 32 * ns + q);
-      const __m512d v97 = _mm512_loadu_pd(tw + 33 * ns + q);
-      const __m512d v98 = _mm512_loadu_pd(tw + 34 * ns + q);
-      const __m512d v99 = _mm512_loadu_pd(tw + 35 * ns + q);
-      const __m512d v100 = _mm512_loadu_pd(tw + 36 * ns + q);
-      const __m512d v101 = _mm512_loadu_pd(tw + 37 * ns + q);
-      const __m512d v102 = _mm512_loadu_pd(tw + 38 * ns + q);
-      const __m512d v103 = _mm512_loadu_pd(tw + 39 * ns + q);
-      const __m512d v104 = _mm512_loadu_pd(tw + 40 * ns + q);
-      const __m512d v105 = _mm512_loadu_pd(tw + 41 * ns + q);
-      const __m512d v106 = _mm512_loadu_pd(tw + 42 * ns + q);
-      const __m512d v107 = _mm512_loadu_pd(tw + 43 * ns + q);
-      const __m512d v108 = _mm512_loadu_pd(tw + 44 * ns + q);
-      const __m512d v109 = _mm512_loadu_pd(tw + 45 * ns + q);
-      const __m512d v110 = _mm512_loadu_pd(tw + 46 * ns + q);
-      const __m512d v111 = _mm512_loadu_pd(tw + 47 * ns + q);
-      const __m512d v112 = _mm512_loadu_pd(tw + 48 * ns + q);
-      const __m512d v113 = _mm512_loadu_pd(tw + 49 * ns + q);
-      const __m512d v114 = _mm512_loadu_pd(tw + 50 * ns + q);
-      const __m512d v115 = _mm512_loadu_pd(tw + 51 * ns + q);
-      const __m512d v116 = _mm512_loadu_pd(tw + 52 * ns + q);
-      const __m512d v117 = _mm512_loadu_pd(tw + 53 * ns + q);
-      const __m512d v118 = _mm512_loadu_pd(tw + 54 * ns + q);
-      const __m512d v119 = _mm512_loadu_pd(tw + 55 * ns + q);
-      const __m512d v120 = _mm512_loadu_pd(tw + 56 * ns + q);
-      const __m512d v121 = _mm512_loadu_pd(tw + 57 * ns + q);
-      const __m512d v122 = _mm512_loadu_pd(tw + 58 * ns + q);
-      const __m512d v123 = _mm512_loadu_pd(tw + 59 * ns + q);
-      const __m512d v124 = _mm512_loadu_pd(tw + 60 * ns + q);
-      const __m512d v125 = _mm512_loadu_pd(tw + 61 * ns + q);
+      const __m512d v64 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v65 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v66 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v67 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v68 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v69 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v70 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v71 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v72 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v73 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v74 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v75 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v76 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v77 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v78 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v79 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v80 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v81 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v82 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v83 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v84 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v85 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v86 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v87 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v88 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v89 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v90 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v91 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v92 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v93 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
+      const __m512d v94 = _mm512_loadu_pd(tw + 30 * tns + q + tq);
+      const __m512d v95 = _mm512_loadu_pd(tw + 31 * tns + q + tq);
+      const __m512d v96 = _mm512_loadu_pd(tw + 32 * tns + q + tq);
+      const __m512d v97 = _mm512_loadu_pd(tw + 33 * tns + q + tq);
+      const __m512d v98 = _mm512_loadu_pd(tw + 34 * tns + q + tq);
+      const __m512d v99 = _mm512_loadu_pd(tw + 35 * tns + q + tq);
+      const __m512d v100 = _mm512_loadu_pd(tw + 36 * tns + q + tq);
+      const __m512d v101 = _mm512_loadu_pd(tw + 37 * tns + q + tq);
+      const __m512d v102 = _mm512_loadu_pd(tw + 38 * tns + q + tq);
+      const __m512d v103 = _mm512_loadu_pd(tw + 39 * tns + q + tq);
+      const __m512d v104 = _mm512_loadu_pd(tw + 40 * tns + q + tq);
+      const __m512d v105 = _mm512_loadu_pd(tw + 41 * tns + q + tq);
+      const __m512d v106 = _mm512_loadu_pd(tw + 42 * tns + q + tq);
+      const __m512d v107 = _mm512_loadu_pd(tw + 43 * tns + q + tq);
+      const __m512d v108 = _mm512_loadu_pd(tw + 44 * tns + q + tq);
+      const __m512d v109 = _mm512_loadu_pd(tw + 45 * tns + q + tq);
+      const __m512d v110 = _mm512_loadu_pd(tw + 46 * tns + q + tq);
+      const __m512d v111 = _mm512_loadu_pd(tw + 47 * tns + q + tq);
+      const __m512d v112 = _mm512_loadu_pd(tw + 48 * tns + q + tq);
+      const __m512d v113 = _mm512_loadu_pd(tw + 49 * tns + q + tq);
+      const __m512d v114 = _mm512_loadu_pd(tw + 50 * tns + q + tq);
+      const __m512d v115 = _mm512_loadu_pd(tw + 51 * tns + q + tq);
+      const __m512d v116 = _mm512_loadu_pd(tw + 52 * tns + q + tq);
+      const __m512d v117 = _mm512_loadu_pd(tw + 53 * tns + q + tq);
+      const __m512d v118 = _mm512_loadu_pd(tw + 54 * tns + q + tq);
+      const __m512d v119 = _mm512_loadu_pd(tw + 55 * tns + q + tq);
+      const __m512d v120 = _mm512_loadu_pd(tw + 56 * tns + q + tq);
+      const __m512d v121 = _mm512_loadu_pd(tw + 57 * tns + q + tq);
+      const __m512d v122 = _mm512_loadu_pd(tw + 58 * tns + q + tq);
+      const __m512d v123 = _mm512_loadu_pd(tw + 59 * tns + q + tq);
+      const __m512d v124 = _mm512_loadu_pd(tw + 60 * tns + q + tq);
+      const __m512d v125 = _mm512_loadu_pd(tw + 61 * tns + q + tq);
       const __m512d t126 = _mm512_mul_pd(v33, v95);
       const __m512d t127 = _mm512_fmsub_pd(v32, v94, t126);
       const __m512d t128 = _mm512_add_pd(v0, t127);
@@ -39674,7 +39674,7 @@ static void lf_leaf_r32_v8_b(const double *restrict in, double *restrict out, si
   }
 }
 
-static void lf_dit_r2_v4_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r2_v4_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = b * ns * 2 + q;
@@ -39682,8 +39682,8 @@ static void lf_dit_r2_v4_b(double *x, const double *restrict tw, size_t ns, size
       const __m256d v1 = _mm256_loadu_pd(x + 2 * (c + 0 * ns) + 4);
       const __m256d v2 = _mm256_loadu_pd(x + 2 * (c + 1 * ns));
       const __m256d v3 = _mm256_loadu_pd(x + 2 * (c + 1 * ns) + 4);
-      const __m256d v4 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v5 = _mm256_loadu_pd(tw + 1 * ns + q);
+      const __m256d v4 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v5 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
       const __m256d t6 = _mm256_mul_pd(v3, v5);
       const __m256d t7 = _mm256_fmsub_pd(v2, v4, t6);
       const __m256d t8 = _mm256_add_pd(v0, t7);
@@ -39700,7 +39700,7 @@ static void lf_dit_r2_v4_b(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r2_v4_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r2_v4_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = q;
@@ -39708,8 +39708,8 @@ static void lf_ditlast_r2_v4_b(double *x, const double *restrict tw, size_t ns, 
       const __m256d v1 = _mm256_loadu_pd(x + 2 * (c + 0 * ns) + 4);
       const __m256d v2 = _mm256_loadu_pd(x + 2 * (c + 1 * ns));
       const __m256d v3 = _mm256_loadu_pd(x + 2 * (c + 1 * ns) + 4);
-      const __m256d v4 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v5 = _mm256_loadu_pd(tw + 1 * ns + q);
+      const __m256d v4 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v5 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
       const __m256d t6 = _mm256_mul_pd(v3, v5);
       const __m256d t7 = _mm256_fmsub_pd(v2, v4, t6);
       const __m256d t8 = _mm256_add_pd(v0, t7);
@@ -39726,7 +39726,7 @@ static void lf_ditlast_r2_v4_b(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r4_v4_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r4_v4_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = b * ns * 4 + q;
@@ -39738,12 +39738,12 @@ static void lf_dit_r4_v4_b(double *x, const double *restrict tw, size_t ns, size
       const __m256d v5 = _mm256_loadu_pd(x + 2 * (c + 2 * ns) + 4);
       const __m256d v6 = _mm256_loadu_pd(x + 2 * (c + 3 * ns));
       const __m256d v7 = _mm256_loadu_pd(x + 2 * (c + 3 * ns) + 4);
-      const __m256d v8 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v9 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v10 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v11 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v12 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v13 = _mm256_loadu_pd(tw + 5 * ns + q);
+      const __m256d v8 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v9 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v10 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v11 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v12 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v13 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
       const __m256d t14 = _mm256_mul_pd(v5, v11);
       const __m256d t15 = _mm256_fmsub_pd(v4, v10, t14);
       const __m256d t16 = _mm256_add_pd(v0, t15);
@@ -39784,7 +39784,7 @@ static void lf_dit_r4_v4_b(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r4_v4_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r4_v4_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = q;
@@ -39796,12 +39796,12 @@ static void lf_ditlast_r4_v4_b(double *x, const double *restrict tw, size_t ns, 
       const __m256d v5 = _mm256_loadu_pd(x + 2 * (c + 2 * ns) + 4);
       const __m256d v6 = _mm256_loadu_pd(x + 2 * (c + 3 * ns));
       const __m256d v7 = _mm256_loadu_pd(x + 2 * (c + 3 * ns) + 4);
-      const __m256d v8 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v9 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v10 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v11 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v12 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v13 = _mm256_loadu_pd(tw + 5 * ns + q);
+      const __m256d v8 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v9 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v10 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v11 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v12 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v13 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
       const __m256d t14 = _mm256_mul_pd(v5, v11);
       const __m256d t15 = _mm256_fmsub_pd(v4, v10, t14);
       const __m256d t16 = _mm256_add_pd(v0, t15);
@@ -39842,7 +39842,7 @@ static void lf_ditlast_r4_v4_b(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r8_v4_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r8_v4_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = b * ns * 8 + q;
@@ -39862,20 +39862,20 @@ static void lf_dit_r8_v4_b(double *x, const double *restrict tw, size_t ns, size
       const __m256d v13 = _mm256_loadu_pd(x + 2 * (c + 6 * ns) + 4);
       const __m256d v14 = _mm256_loadu_pd(x + 2 * (c + 7 * ns));
       const __m256d v15 = _mm256_loadu_pd(x + 2 * (c + 7 * ns) + 4);
-      const __m256d v16 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v17 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v18 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v19 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v20 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v21 = _mm256_loadu_pd(tw + 5 * ns + q);
-      const __m256d v22 = _mm256_loadu_pd(tw + 6 * ns + q);
-      const __m256d v23 = _mm256_loadu_pd(tw + 7 * ns + q);
-      const __m256d v24 = _mm256_loadu_pd(tw + 8 * ns + q);
-      const __m256d v25 = _mm256_loadu_pd(tw + 9 * ns + q);
-      const __m256d v26 = _mm256_loadu_pd(tw + 10 * ns + q);
-      const __m256d v27 = _mm256_loadu_pd(tw + 11 * ns + q);
-      const __m256d v28 = _mm256_loadu_pd(tw + 12 * ns + q);
-      const __m256d v29 = _mm256_loadu_pd(tw + 13 * ns + q);
+      const __m256d v16 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v17 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v18 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v19 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v20 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v21 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
+      const __m256d v22 = _mm256_loadu_pd(tw + 6 * tns + q + tq);
+      const __m256d v23 = _mm256_loadu_pd(tw + 7 * tns + q + tq);
+      const __m256d v24 = _mm256_loadu_pd(tw + 8 * tns + q + tq);
+      const __m256d v25 = _mm256_loadu_pd(tw + 9 * tns + q + tq);
+      const __m256d v26 = _mm256_loadu_pd(tw + 10 * tns + q + tq);
+      const __m256d v27 = _mm256_loadu_pd(tw + 11 * tns + q + tq);
+      const __m256d v28 = _mm256_loadu_pd(tw + 12 * tns + q + tq);
+      const __m256d v29 = _mm256_loadu_pd(tw + 13 * tns + q + tq);
       const __m256d t30 = _mm256_mul_pd(v9, v23);
       const __m256d t31 = _mm256_fmsub_pd(v8, v22, t30);
       const __m256d t32 = _mm256_add_pd(v0, t31);
@@ -39977,7 +39977,7 @@ static void lf_dit_r8_v4_b(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r8_v4_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r8_v4_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 4) {
       const size_t c = q;
@@ -39997,20 +39997,20 @@ static void lf_ditlast_r8_v4_b(double *x, const double *restrict tw, size_t ns, 
       const __m256d v13 = _mm256_loadu_pd(x + 2 * (c + 6 * ns) + 4);
       const __m256d v14 = _mm256_loadu_pd(x + 2 * (c + 7 * ns));
       const __m256d v15 = _mm256_loadu_pd(x + 2 * (c + 7 * ns) + 4);
-      const __m256d v16 = _mm256_loadu_pd(tw + 0 * ns + q);
-      const __m256d v17 = _mm256_loadu_pd(tw + 1 * ns + q);
-      const __m256d v18 = _mm256_loadu_pd(tw + 2 * ns + q);
-      const __m256d v19 = _mm256_loadu_pd(tw + 3 * ns + q);
-      const __m256d v20 = _mm256_loadu_pd(tw + 4 * ns + q);
-      const __m256d v21 = _mm256_loadu_pd(tw + 5 * ns + q);
-      const __m256d v22 = _mm256_loadu_pd(tw + 6 * ns + q);
-      const __m256d v23 = _mm256_loadu_pd(tw + 7 * ns + q);
-      const __m256d v24 = _mm256_loadu_pd(tw + 8 * ns + q);
-      const __m256d v25 = _mm256_loadu_pd(tw + 9 * ns + q);
-      const __m256d v26 = _mm256_loadu_pd(tw + 10 * ns + q);
-      const __m256d v27 = _mm256_loadu_pd(tw + 11 * ns + q);
-      const __m256d v28 = _mm256_loadu_pd(tw + 12 * ns + q);
-      const __m256d v29 = _mm256_loadu_pd(tw + 13 * ns + q);
+      const __m256d v16 = _mm256_loadu_pd(tw + 0 * tns + q + tq);
+      const __m256d v17 = _mm256_loadu_pd(tw + 1 * tns + q + tq);
+      const __m256d v18 = _mm256_loadu_pd(tw + 2 * tns + q + tq);
+      const __m256d v19 = _mm256_loadu_pd(tw + 3 * tns + q + tq);
+      const __m256d v20 = _mm256_loadu_pd(tw + 4 * tns + q + tq);
+      const __m256d v21 = _mm256_loadu_pd(tw + 5 * tns + q + tq);
+      const __m256d v22 = _mm256_loadu_pd(tw + 6 * tns + q + tq);
+      const __m256d v23 = _mm256_loadu_pd(tw + 7 * tns + q + tq);
+      const __m256d v24 = _mm256_loadu_pd(tw + 8 * tns + q + tq);
+      const __m256d v25 = _mm256_loadu_pd(tw + 9 * tns + q + tq);
+      const __m256d v26 = _mm256_loadu_pd(tw + 10 * tns + q + tq);
+      const __m256d v27 = _mm256_loadu_pd(tw + 11 * tns + q + tq);
+      const __m256d v28 = _mm256_loadu_pd(tw + 12 * tns + q + tq);
+      const __m256d v29 = _mm256_loadu_pd(tw + 13 * tns + q + tq);
       const __m256d t30 = _mm256_mul_pd(v9, v23);
       const __m256d t31 = _mm256_fmsub_pd(v8, v22, t30);
       const __m256d t32 = _mm256_add_pd(v0, t31);
@@ -40112,7 +40112,7 @@ static void lf_ditlast_r8_v4_b(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r2_v8_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r2_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 2 + q;
@@ -40120,8 +40120,8 @@ static void lf_dit_r2_v8_b(double *x, const double *restrict tw, size_t ns, size
       const __m512d v1 = _mm512_loadu_pd(x + 2 * (c + 0 * ns) + 8);
       const __m512d v2 = _mm512_loadu_pd(x + 2 * (c + 1 * ns));
       const __m512d v3 = _mm512_loadu_pd(x + 2 * (c + 1 * ns) + 8);
-      const __m512d v4 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v5 = _mm512_loadu_pd(tw + 1 * ns + q);
+      const __m512d v4 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v5 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
       const __m512d t6 = _mm512_mul_pd(v3, v5);
       const __m512d t7 = _mm512_fmsub_pd(v2, v4, t6);
       const __m512d t8 = _mm512_add_pd(v0, t7);
@@ -40138,7 +40138,7 @@ static void lf_dit_r2_v8_b(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r2_v8_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r2_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -40146,8 +40146,8 @@ static void lf_ditlast_r2_v8_b(double *x, const double *restrict tw, size_t ns, 
       const __m512d v1 = _mm512_loadu_pd(x + 2 * (c + 0 * ns) + 8);
       const __m512d v2 = _mm512_loadu_pd(x + 2 * (c + 1 * ns));
       const __m512d v3 = _mm512_loadu_pd(x + 2 * (c + 1 * ns) + 8);
-      const __m512d v4 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v5 = _mm512_loadu_pd(tw + 1 * ns + q);
+      const __m512d v4 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v5 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
       const __m512d t6 = _mm512_mul_pd(v3, v5);
       const __m512d t7 = _mm512_fmsub_pd(v2, v4, t6);
       const __m512d t8 = _mm512_add_pd(v0, t7);
@@ -40164,7 +40164,7 @@ static void lf_ditlast_r2_v8_b(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r4_v8_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r4_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 4 + q;
@@ -40176,12 +40176,12 @@ static void lf_dit_r4_v8_b(double *x, const double *restrict tw, size_t ns, size
       const __m512d v5 = _mm512_loadu_pd(x + 2 * (c + 2 * ns) + 8);
       const __m512d v6 = _mm512_loadu_pd(x + 2 * (c + 3 * ns));
       const __m512d v7 = _mm512_loadu_pd(x + 2 * (c + 3 * ns) + 8);
-      const __m512d v8 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v9 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v10 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v11 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v12 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v13 = _mm512_loadu_pd(tw + 5 * ns + q);
+      const __m512d v8 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v9 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v10 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v11 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v12 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v13 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
       const __m512d t14 = _mm512_mul_pd(v5, v11);
       const __m512d t15 = _mm512_fmsub_pd(v4, v10, t14);
       const __m512d t16 = _mm512_add_pd(v0, t15);
@@ -40222,7 +40222,7 @@ static void lf_dit_r4_v8_b(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r4_v8_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r4_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -40234,12 +40234,12 @@ static void lf_ditlast_r4_v8_b(double *x, const double *restrict tw, size_t ns, 
       const __m512d v5 = _mm512_loadu_pd(x + 2 * (c + 2 * ns) + 8);
       const __m512d v6 = _mm512_loadu_pd(x + 2 * (c + 3 * ns));
       const __m512d v7 = _mm512_loadu_pd(x + 2 * (c + 3 * ns) + 8);
-      const __m512d v8 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v9 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v10 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v11 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v12 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v13 = _mm512_loadu_pd(tw + 5 * ns + q);
+      const __m512d v8 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v9 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v10 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v11 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v12 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v13 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
       const __m512d t14 = _mm512_mul_pd(v5, v11);
       const __m512d t15 = _mm512_fmsub_pd(v4, v10, t14);
       const __m512d t16 = _mm512_add_pd(v0, t15);
@@ -40280,7 +40280,7 @@ static void lf_ditlast_r4_v8_b(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r8_v8_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r8_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 8 + q;
@@ -40300,20 +40300,20 @@ static void lf_dit_r8_v8_b(double *x, const double *restrict tw, size_t ns, size
       const __m512d v13 = _mm512_loadu_pd(x + 2 * (c + 6 * ns) + 8);
       const __m512d v14 = _mm512_loadu_pd(x + 2 * (c + 7 * ns));
       const __m512d v15 = _mm512_loadu_pd(x + 2 * (c + 7 * ns) + 8);
-      const __m512d v16 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v17 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v18 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v19 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v20 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v21 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v22 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v23 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v24 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v25 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v26 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v27 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v28 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v29 = _mm512_loadu_pd(tw + 13 * ns + q);
+      const __m512d v16 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v17 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v18 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v19 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v20 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v21 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v22 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v23 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v24 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v25 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v26 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v27 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v28 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v29 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
       const __m512d t30 = _mm512_mul_pd(v9, v23);
       const __m512d t31 = _mm512_fmsub_pd(v8, v22, t30);
       const __m512d t32 = _mm512_add_pd(v0, t31);
@@ -40415,7 +40415,7 @@ static void lf_dit_r8_v8_b(double *x, const double *restrict tw, size_t ns, size
   }
 }
 
-static void lf_ditlast_r8_v8_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r8_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -40435,20 +40435,20 @@ static void lf_ditlast_r8_v8_b(double *x, const double *restrict tw, size_t ns, 
       const __m512d v13 = _mm512_loadu_pd(x + 2 * (c + 6 * ns) + 8);
       const __m512d v14 = _mm512_loadu_pd(x + 2 * (c + 7 * ns));
       const __m512d v15 = _mm512_loadu_pd(x + 2 * (c + 7 * ns) + 8);
-      const __m512d v16 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v17 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v18 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v19 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v20 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v21 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v22 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v23 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v24 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v25 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v26 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v27 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v28 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v29 = _mm512_loadu_pd(tw + 13 * ns + q);
+      const __m512d v16 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v17 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v18 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v19 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v20 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v21 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v22 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v23 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v24 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v25 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v26 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v27 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v28 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v29 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
       const __m512d t30 = _mm512_mul_pd(v9, v23);
       const __m512d t31 = _mm512_fmsub_pd(v8, v22, t30);
       const __m512d t32 = _mm512_add_pd(v0, t31);
@@ -40550,7 +40550,7 @@ static void lf_ditlast_r8_v8_b(double *x, const double *restrict tw, size_t ns, 
   }
 }
 
-static void lf_dit_r16_v8_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r16_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 16 + q;
@@ -40586,36 +40586,36 @@ static void lf_dit_r16_v8_b(double *x, const double *restrict tw, size_t ns, siz
       const __m512d v29 = _mm512_loadu_pd(x + 2 * (c + 14 * ns) + 8);
       const __m512d v30 = _mm512_loadu_pd(x + 2 * (c + 15 * ns));
       const __m512d v31 = _mm512_loadu_pd(x + 2 * (c + 15 * ns) + 8);
-      const __m512d v32 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v33 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v34 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v35 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v36 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v37 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v38 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v39 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v40 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v41 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v42 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v43 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v44 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v45 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v46 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v47 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v48 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v49 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v50 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v51 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v52 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v53 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v54 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v55 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v56 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v57 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v58 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v59 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v60 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v61 = _mm512_loadu_pd(tw + 29 * ns + q);
+      const __m512d v32 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v33 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v34 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v35 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v36 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v37 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v38 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v39 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v40 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v41 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v42 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v43 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v44 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v45 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v46 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v47 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v48 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v49 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v50 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v51 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v52 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v53 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v54 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v55 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v56 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v57 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v58 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v59 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v60 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v61 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
       const __m512d t62 = _mm512_mul_pd(v17, v47);
       const __m512d t63 = _mm512_fmsub_pd(v16, v46, t62);
       const __m512d t64 = _mm512_add_pd(v0, t63);
@@ -40873,7 +40873,7 @@ static void lf_dit_r16_v8_b(double *x, const double *restrict tw, size_t ns, siz
   }
 }
 
-static void lf_ditlast_r16_v8_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r16_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -40909,36 +40909,36 @@ static void lf_ditlast_r16_v8_b(double *x, const double *restrict tw, size_t ns,
       const __m512d v29 = _mm512_loadu_pd(x + 2 * (c + 14 * ns) + 8);
       const __m512d v30 = _mm512_loadu_pd(x + 2 * (c + 15 * ns));
       const __m512d v31 = _mm512_loadu_pd(x + 2 * (c + 15 * ns) + 8);
-      const __m512d v32 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v33 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v34 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v35 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v36 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v37 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v38 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v39 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v40 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v41 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v42 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v43 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v44 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v45 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v46 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v47 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v48 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v49 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v50 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v51 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v52 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v53 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v54 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v55 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v56 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v57 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v58 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v59 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v60 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v61 = _mm512_loadu_pd(tw + 29 * ns + q);
+      const __m512d v32 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v33 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v34 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v35 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v36 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v37 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v38 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v39 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v40 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v41 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v42 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v43 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v44 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v45 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v46 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v47 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v48 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v49 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v50 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v51 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v52 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v53 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v54 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v55 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v56 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v57 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v58 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v59 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v60 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v61 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
       const __m512d t62 = _mm512_mul_pd(v17, v47);
       const __m512d t63 = _mm512_fmsub_pd(v16, v46, t62);
       const __m512d t64 = _mm512_add_pd(v0, t63);
@@ -41196,7 +41196,7 @@ static void lf_ditlast_r16_v8_b(double *x, const double *restrict tw, size_t ns,
   }
 }
 
-static void lf_dit_r32_v8_b(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) {
+static void lf_dit_r32_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t b0, size_t b1, size_t q0, size_t q1, size_t tq) {
   for (size_t b = b0; b < b1; ++b) {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = b * ns * 32 + q;
@@ -41264,68 +41264,68 @@ static void lf_dit_r32_v8_b(double *x, const double *restrict tw, size_t ns, siz
       const __m512d v61 = _mm512_loadu_pd(x + 2 * (c + 30 * ns) + 8);
       const __m512d v62 = _mm512_loadu_pd(x + 2 * (c + 31 * ns));
       const __m512d v63 = _mm512_loadu_pd(x + 2 * (c + 31 * ns) + 8);
-      const __m512d v64 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v65 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v66 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v67 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v68 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v69 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v70 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v71 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v72 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v73 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v74 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v75 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v76 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v77 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v78 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v79 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v80 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v81 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v82 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v83 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v84 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v85 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v86 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v87 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v88 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v89 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v90 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v91 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v92 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v93 = _mm512_loadu_pd(tw + 29 * ns + q);
-      const __m512d v94 = _mm512_loadu_pd(tw + 30 * ns + q);
-      const __m512d v95 = _mm512_loadu_pd(tw + 31 * ns + q);
-      const __m512d v96 = _mm512_loadu_pd(tw + 32 * ns + q);
-      const __m512d v97 = _mm512_loadu_pd(tw + 33 * ns + q);
-      const __m512d v98 = _mm512_loadu_pd(tw + 34 * ns + q);
-      const __m512d v99 = _mm512_loadu_pd(tw + 35 * ns + q);
-      const __m512d v100 = _mm512_loadu_pd(tw + 36 * ns + q);
-      const __m512d v101 = _mm512_loadu_pd(tw + 37 * ns + q);
-      const __m512d v102 = _mm512_loadu_pd(tw + 38 * ns + q);
-      const __m512d v103 = _mm512_loadu_pd(tw + 39 * ns + q);
-      const __m512d v104 = _mm512_loadu_pd(tw + 40 * ns + q);
-      const __m512d v105 = _mm512_loadu_pd(tw + 41 * ns + q);
-      const __m512d v106 = _mm512_loadu_pd(tw + 42 * ns + q);
-      const __m512d v107 = _mm512_loadu_pd(tw + 43 * ns + q);
-      const __m512d v108 = _mm512_loadu_pd(tw + 44 * ns + q);
-      const __m512d v109 = _mm512_loadu_pd(tw + 45 * ns + q);
-      const __m512d v110 = _mm512_loadu_pd(tw + 46 * ns + q);
-      const __m512d v111 = _mm512_loadu_pd(tw + 47 * ns + q);
-      const __m512d v112 = _mm512_loadu_pd(tw + 48 * ns + q);
-      const __m512d v113 = _mm512_loadu_pd(tw + 49 * ns + q);
-      const __m512d v114 = _mm512_loadu_pd(tw + 50 * ns + q);
-      const __m512d v115 = _mm512_loadu_pd(tw + 51 * ns + q);
-      const __m512d v116 = _mm512_loadu_pd(tw + 52 * ns + q);
-      const __m512d v117 = _mm512_loadu_pd(tw + 53 * ns + q);
-      const __m512d v118 = _mm512_loadu_pd(tw + 54 * ns + q);
-      const __m512d v119 = _mm512_loadu_pd(tw + 55 * ns + q);
-      const __m512d v120 = _mm512_loadu_pd(tw + 56 * ns + q);
-      const __m512d v121 = _mm512_loadu_pd(tw + 57 * ns + q);
-      const __m512d v122 = _mm512_loadu_pd(tw + 58 * ns + q);
-      const __m512d v123 = _mm512_loadu_pd(tw + 59 * ns + q);
-      const __m512d v124 = _mm512_loadu_pd(tw + 60 * ns + q);
-      const __m512d v125 = _mm512_loadu_pd(tw + 61 * ns + q);
+      const __m512d v64 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v65 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v66 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v67 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v68 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v69 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v70 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v71 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v72 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v73 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v74 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v75 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v76 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v77 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v78 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v79 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v80 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v81 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v82 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v83 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v84 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v85 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v86 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v87 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v88 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v89 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v90 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v91 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v92 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v93 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
+      const __m512d v94 = _mm512_loadu_pd(tw + 30 * tns + q + tq);
+      const __m512d v95 = _mm512_loadu_pd(tw + 31 * tns + q + tq);
+      const __m512d v96 = _mm512_loadu_pd(tw + 32 * tns + q + tq);
+      const __m512d v97 = _mm512_loadu_pd(tw + 33 * tns + q + tq);
+      const __m512d v98 = _mm512_loadu_pd(tw + 34 * tns + q + tq);
+      const __m512d v99 = _mm512_loadu_pd(tw + 35 * tns + q + tq);
+      const __m512d v100 = _mm512_loadu_pd(tw + 36 * tns + q + tq);
+      const __m512d v101 = _mm512_loadu_pd(tw + 37 * tns + q + tq);
+      const __m512d v102 = _mm512_loadu_pd(tw + 38 * tns + q + tq);
+      const __m512d v103 = _mm512_loadu_pd(tw + 39 * tns + q + tq);
+      const __m512d v104 = _mm512_loadu_pd(tw + 40 * tns + q + tq);
+      const __m512d v105 = _mm512_loadu_pd(tw + 41 * tns + q + tq);
+      const __m512d v106 = _mm512_loadu_pd(tw + 42 * tns + q + tq);
+      const __m512d v107 = _mm512_loadu_pd(tw + 43 * tns + q + tq);
+      const __m512d v108 = _mm512_loadu_pd(tw + 44 * tns + q + tq);
+      const __m512d v109 = _mm512_loadu_pd(tw + 45 * tns + q + tq);
+      const __m512d v110 = _mm512_loadu_pd(tw + 46 * tns + q + tq);
+      const __m512d v111 = _mm512_loadu_pd(tw + 47 * tns + q + tq);
+      const __m512d v112 = _mm512_loadu_pd(tw + 48 * tns + q + tq);
+      const __m512d v113 = _mm512_loadu_pd(tw + 49 * tns + q + tq);
+      const __m512d v114 = _mm512_loadu_pd(tw + 50 * tns + q + tq);
+      const __m512d v115 = _mm512_loadu_pd(tw + 51 * tns + q + tq);
+      const __m512d v116 = _mm512_loadu_pd(tw + 52 * tns + q + tq);
+      const __m512d v117 = _mm512_loadu_pd(tw + 53 * tns + q + tq);
+      const __m512d v118 = _mm512_loadu_pd(tw + 54 * tns + q + tq);
+      const __m512d v119 = _mm512_loadu_pd(tw + 55 * tns + q + tq);
+      const __m512d v120 = _mm512_loadu_pd(tw + 56 * tns + q + tq);
+      const __m512d v121 = _mm512_loadu_pd(tw + 57 * tns + q + tq);
+      const __m512d v122 = _mm512_loadu_pd(tw + 58 * tns + q + tq);
+      const __m512d v123 = _mm512_loadu_pd(tw + 59 * tns + q + tq);
+      const __m512d v124 = _mm512_loadu_pd(tw + 60 * tns + q + tq);
+      const __m512d v125 = _mm512_loadu_pd(tw + 61 * tns + q + tq);
       const __m512d t126 = _mm512_mul_pd(v33, v95);
       const __m512d t127 = _mm512_fmsub_pd(v32, v94, t126);
       const __m512d t128 = _mm512_add_pd(v0, t127);
@@ -41963,7 +41963,7 @@ static void lf_dit_r32_v8_b(double *x, const double *restrict tw, size_t ns, siz
   }
 }
 
-static void lf_ditlast_r32_v8_b(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1) {
+static void lf_ditlast_r32_v8_b(double *x, const double *restrict tw, size_t ns, size_t tns, size_t q0, size_t q1, size_t tq) {
   {
     for (size_t q = q0; q < q1; q += 8) {
       const size_t c = q;
@@ -42031,68 +42031,68 @@ static void lf_ditlast_r32_v8_b(double *x, const double *restrict tw, size_t ns,
       const __m512d v61 = _mm512_loadu_pd(x + 2 * (c + 30 * ns) + 8);
       const __m512d v62 = _mm512_loadu_pd(x + 2 * (c + 31 * ns));
       const __m512d v63 = _mm512_loadu_pd(x + 2 * (c + 31 * ns) + 8);
-      const __m512d v64 = _mm512_loadu_pd(tw + 0 * ns + q);
-      const __m512d v65 = _mm512_loadu_pd(tw + 1 * ns + q);
-      const __m512d v66 = _mm512_loadu_pd(tw + 2 * ns + q);
-      const __m512d v67 = _mm512_loadu_pd(tw + 3 * ns + q);
-      const __m512d v68 = _mm512_loadu_pd(tw + 4 * ns + q);
-      const __m512d v69 = _mm512_loadu_pd(tw + 5 * ns + q);
-      const __m512d v70 = _mm512_loadu_pd(tw + 6 * ns + q);
-      const __m512d v71 = _mm512_loadu_pd(tw + 7 * ns + q);
-      const __m512d v72 = _mm512_loadu_pd(tw + 8 * ns + q);
-      const __m512d v73 = _mm512_loadu_pd(tw + 9 * ns + q);
-      const __m512d v74 = _mm512_loadu_pd(tw + 10 * ns + q);
-      const __m512d v75 = _mm512_loadu_pd(tw + 11 * ns + q);
-      const __m512d v76 = _mm512_loadu_pd(tw + 12 * ns + q);
-      const __m512d v77 = _mm512_loadu_pd(tw + 13 * ns + q);
-      const __m512d v78 = _mm512_loadu_pd(tw + 14 * ns + q);
-      const __m512d v79 = _mm512_loadu_pd(tw + 15 * ns + q);
-      const __m512d v80 = _mm512_loadu_pd(tw + 16 * ns + q);
-      const __m512d v81 = _mm512_loadu_pd(tw + 17 * ns + q);
-      const __m512d v82 = _mm512_loadu_pd(tw + 18 * ns + q);
-      const __m512d v83 = _mm512_loadu_pd(tw + 19 * ns + q);
-      const __m512d v84 = _mm512_loadu_pd(tw + 20 * ns + q);
-      const __m512d v85 = _mm512_loadu_pd(tw + 21 * ns + q);
-      const __m512d v86 = _mm512_loadu_pd(tw + 22 * ns + q);
-      const __m512d v87 = _mm512_loadu_pd(tw + 23 * ns + q);
-      const __m512d v88 = _mm512_loadu_pd(tw + 24 * ns + q);
-      const __m512d v89 = _mm512_loadu_pd(tw + 25 * ns + q);
-      const __m512d v90 = _mm512_loadu_pd(tw + 26 * ns + q);
-      const __m512d v91 = _mm512_loadu_pd(tw + 27 * ns + q);
-      const __m512d v92 = _mm512_loadu_pd(tw + 28 * ns + q);
-      const __m512d v93 = _mm512_loadu_pd(tw + 29 * ns + q);
-      const __m512d v94 = _mm512_loadu_pd(tw + 30 * ns + q);
-      const __m512d v95 = _mm512_loadu_pd(tw + 31 * ns + q);
-      const __m512d v96 = _mm512_loadu_pd(tw + 32 * ns + q);
-      const __m512d v97 = _mm512_loadu_pd(tw + 33 * ns + q);
-      const __m512d v98 = _mm512_loadu_pd(tw + 34 * ns + q);
-      const __m512d v99 = _mm512_loadu_pd(tw + 35 * ns + q);
-      const __m512d v100 = _mm512_loadu_pd(tw + 36 * ns + q);
-      const __m512d v101 = _mm512_loadu_pd(tw + 37 * ns + q);
-      const __m512d v102 = _mm512_loadu_pd(tw + 38 * ns + q);
-      const __m512d v103 = _mm512_loadu_pd(tw + 39 * ns + q);
-      const __m512d v104 = _mm512_loadu_pd(tw + 40 * ns + q);
-      const __m512d v105 = _mm512_loadu_pd(tw + 41 * ns + q);
-      const __m512d v106 = _mm512_loadu_pd(tw + 42 * ns + q);
-      const __m512d v107 = _mm512_loadu_pd(tw + 43 * ns + q);
-      const __m512d v108 = _mm512_loadu_pd(tw + 44 * ns + q);
-      const __m512d v109 = _mm512_loadu_pd(tw + 45 * ns + q);
-      const __m512d v110 = _mm512_loadu_pd(tw + 46 * ns + q);
-      const __m512d v111 = _mm512_loadu_pd(tw + 47 * ns + q);
-      const __m512d v112 = _mm512_loadu_pd(tw + 48 * ns + q);
-      const __m512d v113 = _mm512_loadu_pd(tw + 49 * ns + q);
-      const __m512d v114 = _mm512_loadu_pd(tw + 50 * ns + q);
-      const __m512d v115 = _mm512_loadu_pd(tw + 51 * ns + q);
-      const __m512d v116 = _mm512_loadu_pd(tw + 52 * ns + q);
-      const __m512d v117 = _mm512_loadu_pd(tw + 53 * ns + q);
-      const __m512d v118 = _mm512_loadu_pd(tw + 54 * ns + q);
-      const __m512d v119 = _mm512_loadu_pd(tw + 55 * ns + q);
-      const __m512d v120 = _mm512_loadu_pd(tw + 56 * ns + q);
-      const __m512d v121 = _mm512_loadu_pd(tw + 57 * ns + q);
-      const __m512d v122 = _mm512_loadu_pd(tw + 58 * ns + q);
-      const __m512d v123 = _mm512_loadu_pd(tw + 59 * ns + q);
-      const __m512d v124 = _mm512_loadu_pd(tw + 60 * ns + q);
-      const __m512d v125 = _mm512_loadu_pd(tw + 61 * ns + q);
+      const __m512d v64 = _mm512_loadu_pd(tw + 0 * tns + q + tq);
+      const __m512d v65 = _mm512_loadu_pd(tw + 1 * tns + q + tq);
+      const __m512d v66 = _mm512_loadu_pd(tw + 2 * tns + q + tq);
+      const __m512d v67 = _mm512_loadu_pd(tw + 3 * tns + q + tq);
+      const __m512d v68 = _mm512_loadu_pd(tw + 4 * tns + q + tq);
+      const __m512d v69 = _mm512_loadu_pd(tw + 5 * tns + q + tq);
+      const __m512d v70 = _mm512_loadu_pd(tw + 6 * tns + q + tq);
+      const __m512d v71 = _mm512_loadu_pd(tw + 7 * tns + q + tq);
+      const __m512d v72 = _mm512_loadu_pd(tw + 8 * tns + q + tq);
+      const __m512d v73 = _mm512_loadu_pd(tw + 9 * tns + q + tq);
+      const __m512d v74 = _mm512_loadu_pd(tw + 10 * tns + q + tq);
+      const __m512d v75 = _mm512_loadu_pd(tw + 11 * tns + q + tq);
+      const __m512d v76 = _mm512_loadu_pd(tw + 12 * tns + q + tq);
+      const __m512d v77 = _mm512_loadu_pd(tw + 13 * tns + q + tq);
+      const __m512d v78 = _mm512_loadu_pd(tw + 14 * tns + q + tq);
+      const __m512d v79 = _mm512_loadu_pd(tw + 15 * tns + q + tq);
+      const __m512d v80 = _mm512_loadu_pd(tw + 16 * tns + q + tq);
+      const __m512d v81 = _mm512_loadu_pd(tw + 17 * tns + q + tq);
+      const __m512d v82 = _mm512_loadu_pd(tw + 18 * tns + q + tq);
+      const __m512d v83 = _mm512_loadu_pd(tw + 19 * tns + q + tq);
+      const __m512d v84 = _mm512_loadu_pd(tw + 20 * tns + q + tq);
+      const __m512d v85 = _mm512_loadu_pd(tw + 21 * tns + q + tq);
+      const __m512d v86 = _mm512_loadu_pd(tw + 22 * tns + q + tq);
+      const __m512d v87 = _mm512_loadu_pd(tw + 23 * tns + q + tq);
+      const __m512d v88 = _mm512_loadu_pd(tw + 24 * tns + q + tq);
+      const __m512d v89 = _mm512_loadu_pd(tw + 25 * tns + q + tq);
+      const __m512d v90 = _mm512_loadu_pd(tw + 26 * tns + q + tq);
+      const __m512d v91 = _mm512_loadu_pd(tw + 27 * tns + q + tq);
+      const __m512d v92 = _mm512_loadu_pd(tw + 28 * tns + q + tq);
+      const __m512d v93 = _mm512_loadu_pd(tw + 29 * tns + q + tq);
+      const __m512d v94 = _mm512_loadu_pd(tw + 30 * tns + q + tq);
+      const __m512d v95 = _mm512_loadu_pd(tw + 31 * tns + q + tq);
+      const __m512d v96 = _mm512_loadu_pd(tw + 32 * tns + q + tq);
+      const __m512d v97 = _mm512_loadu_pd(tw + 33 * tns + q + tq);
+      const __m512d v98 = _mm512_loadu_pd(tw + 34 * tns + q + tq);
+      const __m512d v99 = _mm512_loadu_pd(tw + 35 * tns + q + tq);
+      const __m512d v100 = _mm512_loadu_pd(tw + 36 * tns + q + tq);
+      const __m512d v101 = _mm512_loadu_pd(tw + 37 * tns + q + tq);
+      const __m512d v102 = _mm512_loadu_pd(tw + 38 * tns + q + tq);
+      const __m512d v103 = _mm512_loadu_pd(tw + 39 * tns + q + tq);
+      const __m512d v104 = _mm512_loadu_pd(tw + 40 * tns + q + tq);
+      const __m512d v105 = _mm512_loadu_pd(tw + 41 * tns + q + tq);
+      const __m512d v106 = _mm512_loadu_pd(tw + 42 * tns + q + tq);
+      const __m512d v107 = _mm512_loadu_pd(tw + 43 * tns + q + tq);
+      const __m512d v108 = _mm512_loadu_pd(tw + 44 * tns + q + tq);
+      const __m512d v109 = _mm512_loadu_pd(tw + 45 * tns + q + tq);
+      const __m512d v110 = _mm512_loadu_pd(tw + 46 * tns + q + tq);
+      const __m512d v111 = _mm512_loadu_pd(tw + 47 * tns + q + tq);
+      const __m512d v112 = _mm512_loadu_pd(tw + 48 * tns + q + tq);
+      const __m512d v113 = _mm512_loadu_pd(tw + 49 * tns + q + tq);
+      const __m512d v114 = _mm512_loadu_pd(tw + 50 * tns + q + tq);
+      const __m512d v115 = _mm512_loadu_pd(tw + 51 * tns + q + tq);
+      const __m512d v116 = _mm512_loadu_pd(tw + 52 * tns + q + tq);
+      const __m512d v117 = _mm512_loadu_pd(tw + 53 * tns + q + tq);
+      const __m512d v118 = _mm512_loadu_pd(tw + 54 * tns + q + tq);
+      const __m512d v119 = _mm512_loadu_pd(tw + 55 * tns + q + tq);
+      const __m512d v120 = _mm512_loadu_pd(tw + 56 * tns + q + tq);
+      const __m512d v121 = _mm512_loadu_pd(tw + 57 * tns + q + tq);
+      const __m512d v122 = _mm512_loadu_pd(tw + 58 * tns + q + tq);
+      const __m512d v123 = _mm512_loadu_pd(tw + 59 * tns + q + tq);
+      const __m512d v124 = _mm512_loadu_pd(tw + 60 * tns + q + tq);
+      const __m512d v125 = _mm512_loadu_pd(tw + 61 * tns + q + tq);
       const __m512d t126 = _mm512_mul_pd(v33, v95);
       const __m512d t127 = _mm512_fmsub_pd(v32, v94, t126);
       const __m512d t128 = _mm512_add_pd(v0, t127);

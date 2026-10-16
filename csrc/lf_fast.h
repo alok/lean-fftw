@@ -14,6 +14,7 @@ typedef struct lf_plan lf_plan;
    LF_INPLACE: digit-reversed first pass into `out`, then in-place passes;
    LF_CFUSED: whole transform N = R[0]*R[1] on interleaved complex vectors. */
 enum { LF_STOCKHAM = 0, LF_FUSED = 1, LF_INPLACE = 2, LF_CFUSED = 3 };
+#define LF_NMODES 4
 
 /* Vector length usable for the radix sequence R[0..s-1] (product N) in the given
    schedule, or 0 if no generated kernels cover it. s = 1 (LF_STOCKHAM only) means a

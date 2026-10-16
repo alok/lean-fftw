@@ -60,3 +60,45 @@ Quick timings (ns): N=512 563 → 533; 1024 1191 → 1140; 256 258 → 251.
 
 Also in this commit: optional cache blocking of the in-place schedule
 (`lf_set_blocking`), not yet used by the planner.
+
+## i3: interleaved-complex kernels for whole small transforms (commit ea5260f)
+
+Hypothesis: for N ≤ 128 the split re/im layout costs a deinterleave on input and a
+re-interleave on output that are as expensive as the butterflies. FFTW's `n1fv` codelets
+work directly on interleaved complex vectors.
+
+Change: `LeanFFTW/Gen/Interleave.lean` vectorizes the same CSE'd straight-line kernel over
+interleaved complex numbers (a vector holds whole complex values, so lanes mix real and
+imaginary parts). Each output vector is built from scalar slots by `vpair`; operations whose
+lanes need different add/sub use `fmaddsub`/`fmsubadd`, and anything else falls back to a
+shuffle. A whole transform `N = R1·R2` becomes one function with constant twiddles
+(`LF_CFUSED`). The arithmetic per scalar slot is the kernel's, so results stay bit-identical to
+the Lean reference.
+
+Quick timings (ns, i2 → i3): N=8 9.9 → 5.2; 16 19.1 → 9.2; 32 44.6 → 22.7; 64 49.9 → 48.6.
+
+## i4: measuring planner over schedules and cache blocking (binary `bench-lean-i4`)
+
+Hypotheses:
+
+1. The planner chose among radix sequences but not among schedules; for several sizes the
+   best schedule differs from the fixed choice.
+2. For N ≥ 2^15 the in-place passes stream the whole array from L3 each time. Running the
+   first T passes on groups of level-T blocks that fit in L2, and the later passes in
+   chunks of Q columns, cuts L3 traffic.
+
+Change: `lf_plan_measure` times every radix sequence under every applicable schedule (min of
+5 runs of ≥ 0.2 ms), then for N ≥ 2^15 tries blocking (T from s−3 to s−1, Q ∈ {0, 32, 128})
+on the 8 best in-place plans, and re-times the 4 leaders interleaved over 3 rounds to reduce
+noise. Kernel signatures gained a twiddle stride (`tns`, `tq`) so column chunks index the
+twiddle table directly. A buffered-chunk variant (copying each chunk to a small contiguous
+buffer) and non-temporal stores were tried and removed: both were slower (per-row copy
+overhead, then L2 set conflicts between power-of-two strided rows).
+
+Tests: all 3,236 enumerated plans (both directions) for N ≤ 16384 (out-of-place and in-place) and every
+blocking option of three radix sequences per size for N = 2^15 … 2^18 (470 plans) match the
+Lean reference bit for bit; libbench2 `--verify` passes for N = 1 … 2^18, both directions,
+in and out of place. Commands: `test_fast 14`, `test_fast -1 18`.
+
+Quick timings (µs, i2 from the 3-run quick protocol → i4 single runs): N=32768 84.3 → 81.0; 65536 225 → 218; 131072 657 → 538;
+262144 1543 → 1350.
