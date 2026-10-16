@@ -1,0 +1,1 @@
+Problem: ocf1024, setup: 16.04 s, time: 1.22 us, ``mflops'': 42012.36

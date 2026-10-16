@@ -1,0 +1,1 @@
+Problem: ocf64, setup: 17.32 ms, time: 71.04 ns, ``mflops'': 27028.057

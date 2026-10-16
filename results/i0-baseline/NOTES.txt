@@ -1,0 +1,1 @@
+2026-10-16T22:40:51Z pinned baseline driver to CPU0 at row 500; rows from ~22:33-22:40Z may be perturbed by profiling on the same core

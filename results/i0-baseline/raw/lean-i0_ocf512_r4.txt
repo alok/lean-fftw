@@ -1,0 +1,1 @@
+Problem: ocf512, setup: 67.50 ms, time: 602.39 ns, ``mflops'': 38247.871
