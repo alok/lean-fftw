@@ -1,0 +1,64 @@
+# Semantic contract
+
+Lean FFTW computes the same transforms as FFTW 3.3.10, with FFTW's conventions.
+This file fixes what "correct" means, the supported domain, and what is excluded.
+The coverage status of every item is tracked in [FFTW_INVENTORY.md](FFTW_INVENTORY.md).
+
+## Transform semantics (FFTW conventions)
+
+All transforms are **unnormalized**. For a complex array `x` of length `n`:
+
+* Forward DFT (FFTW_FORWARD, sign −1):
+  `Y[k] = Σ_{j=0}^{n-1} x[j] · exp(−2πi·j·k/n)`.
+  In Lean this is Mathlib's independently defined `ZMod.dft` (`𝓕`, file
+  `Mathlib/Analysis/Fourier/ZMod.lean`, by D. Loeffler), transported to `Fin n → ℂ`.
+* Backward DFT (FFTW_BACKWARD, sign +1):
+  `Y[k] = Σ_j x[j] · exp(+2πi·j·k/n)`, equal to `n · 𝓕⁻ x` (Mathlib's inverse DFT
+  scaled by `n`).
+* Multi-dimensional DFT of rank d with sizes n₁…n_d: the separable product of 1-D
+  DFTs along every axis, row-major indexing as in FFTW.
+* r2c (real input, forward): the forward DFT of a real array, returning the
+  `⌊n_d/2⌋+1` non-redundant outputs of the last dimension. c2r (backward): the
+  backward DFT of the Hermitian-symmetric array determined by those outputs;
+  as in FFTW, the imaginary parts of the self-conjugate entries are ignored.
+* r2r kinds R2HC, HC2R, DHT, REDFT00/01/10/11, RODFT00/01/10/11: the formulas in
+  FFTW manual §4.8 ("What FFTW Really Computes"), stated in Lean in
+  `LeanFFTW/Spec/R2R.lean`.
+
+## Data layout and problem space
+
+The problem space is FFTW's guru interface, as parsed by libbench2:
+transform tensor (rank ≥ 0, each dimension `n`, input stride, output stride),
+vector ("howmany") tensor of any rank, in-place or out-of-place, interleaved or
+split real/imaginary storage, "destroy input allowed", element type `double`.
+
+## Supported input domain and error cases
+
+* Sizes: any `n ≥ 1` per dimension, total size fitting in `int` (FFTW's limit for
+  the non-64 guru interface). Rank-0 transforms are copies, as in FFTW.
+* Inputs: finite IEEE binary64 values. Behavior on NaN/Inf inputs is unspecified
+  by FFTW and only "propagates non-finite values" here; the floating-point error
+  theorem assumes finite inputs and no overflow (stated hypotheses).
+* Planning fails (returns a null plan, `can_do` false) for unsupported problems;
+  it never silently computes a different transform.
+* `n = 0` dimensions and REDFT00 of size 1 are rejected, as in FFTW.
+
+## Accuracy
+
+* Exact-arithmetic semantics: proved equal to the specification (docs/THEOREMS.md).
+* Floating-point: each binary64 operation is modeled as IEEE round-to-nearest-even
+  (FloatLib's binary64 model). The proved bound is stated in docs/THEOREMS.md with
+  its hypotheses (finite inputs, no overflow/underflow, twiddle accuracy).
+* Empirical acceptance: libbench2 `--verify` tolerance, the same tolerance FFTW's
+  own tests apply to FFTW.
+
+## Exclusions (not part of the compatibility surface)
+
+* FFTW's single, long-double and quad precision variants (`fftwf_`, `fftwl_`,
+  `fftwq_`).
+* MPI transforms, the Fortran API, and the wisdom file format (no wisdom
+  import/export; Lean FFTW has its own planner).
+* Multi-threaded execution is out of the primary scope; reported separately if
+  added.
+* Bit-for-bit identity with FFTW outputs is **not** a goal; agreement is within
+  floating-point tolerance, as between any two FFTW plans.
