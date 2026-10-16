@@ -510,6 +510,54 @@ theorem primeFactors_pos (n : ℕ) : ∀ f ∈ primeFactors n, 0 < f :=
 theorem primeFactors_prod {n : ℕ} (hn : 0 < n) : (primeFactors n).prod = n :=
   (primeFactors_go_spec n n 2 (by norm_num)).2 hn
 
+/-! ## FMA contraction preserves exact values -/
+
+section Contract
+
+open SExpr
+
+theorem ev_contractAdd (env : ℕ → ℝ) (a b : SExpr) :
+    ev env (contractAdd a b) = ev env a + ev env b := by
+  unfold contractAdd; split <;> simp; ring
+
+theorem ev_contractSub (env : ℕ → ℝ) (a b : SExpr) :
+    ev env (contractSub a b) = ev env a - ev env b := by
+  unfold contractSub; split <;> simp
+
+theorem ev_contract (env : ℕ → ℝ) : ∀ e : SExpr, ev env e.contract = ev env e
+  | .add a b => by simp only [contract, ev_contractAdd, ev_contract env a, ev_contract env b, ev_add]
+  | .sub a b => by simp only [contract, ev_contractSub, ev_contract env a, ev_contract env b, ev_sub]
+  | .mul a b => by simp only [contract, ev_mul, ev_contract env a, ev_contract env b]
+  | .neg a => by simp only [contract, ev_neg, ev_contract env a]
+  | .fma a b c => by simp only [contract, ev_fma, ev_contract env a, ev_contract env b, ev_contract env c]
+  | .fms a b c => by simp only [contract, ev_fms, ev_contract env a, ev_contract env b, ev_contract env c]
+  | .fnma a b c => by simp only [contract, ev_fnma, ev_contract env a, ev_contract env b, ev_contract env c]
+  | .input _ => rfl
+  | .zero => rfl
+  | .cst _ => rfl
+
+theorem il_contractAdd {m : ℕ} {a b : SExpr} (ha : a.InputsLt m) (hb : b.InputsLt m) :
+    (contractAdd a b).InputsLt m := by
+  unfold contractAdd; split <;> simp_all [SExpr.InputsLt]
+
+theorem il_contractSub {m : ℕ} {a b : SExpr} (ha : a.InputsLt m) (hb : b.InputsLt m) :
+    (contractSub a b).InputsLt m := by
+  unfold contractSub; split <;> simp_all [SExpr.InputsLt]
+
+theorem il_contract {m : ℕ} : ∀ {e : SExpr}, e.InputsLt m → e.contract.InputsLt m
+  | .add _ _, h => il_contractAdd (il_contract h.1) (il_contract h.2)
+  | .sub _ _, h => il_contractSub (il_contract h.1) (il_contract h.2)
+  | .mul _ _, h => ⟨il_contract h.1, il_contract h.2⟩
+  | .neg a, h => il_contract (e := a) h
+  | .fma _ _ _, h => ⟨il_contract h.1, il_contract h.2.1, il_contract h.2.2⟩
+  | .fms _ _ _, h => ⟨il_contract h.1, il_contract h.2.1, il_contract h.2.2⟩
+  | .fnma _ _ _, h => ⟨il_contract h.1, il_contract h.2.1, il_contract h.2.2⟩
+  | .input _, h => h
+  | .zero, h => h
+  | .cst _, h => h
+
+end Contract
+
 /-! ## The generated butterfly kernels compute the DFT -/
 
 /-- The complex value of butterfly input `r` (the input times its twiddle, if any) for
@@ -575,7 +623,7 @@ theorem butterflyK_correct (fwd : Bool) {R : ℕ} (hR : 0 < R) (twiddled : Bool)
     simp only [butterfly, Array.mem_map, Array.mem_range] at he
     obtain ⟨i, hi, rfl⟩ := he
     obtain ⟨-, p1, p2⟩ := parts_spec env (hspec i hi).2
-    split <;> assumption
+    split <;> exact il_contract (by assumption)
   unfold butterflyK
   rw [cse_correct realArith_comm _ hinp hout]
   apply Array.ext
@@ -590,8 +638,8 @@ theorem butterflyK_correct (fwd : Bool) {R : ℕ} (hR : 0 < R) (twiddled : Bool)
     have him := congrArg Complex.im p
     simp only [evC] at hre him
     split
-    · exact hre
-    · exact him
+    · exact (ev_contract env _).trans hre
+    · exact (ev_contract env _).trans him
 
 end Exec
 

@@ -129,6 +129,30 @@ def mkFmaSub (c1 : Cst) (a : SExpr) (c2 : Cst) (b : SExpr) : SExpr :=
   | _, .zero => mkMulC c1 a
   | _, _ => .fms (.cst c1) a (mkMulC c2 b)
 
+/-- `a + b`, contracted to a fused multiply-add when an operand is a product. -/
+def contractAdd : SExpr → SExpr → SExpr
+  | .mul x y, c => .fma x y c
+  | c, .mul x y => .fma x y c
+  | a, b => .add a b
+
+/-- `a - b`, contracted to a fused multiply-subtract when an operand is a product. -/
+def contractSub : SExpr → SExpr → SExpr
+  | .mul x y, c => .fms x y c
+  | c, .mul x y => .fnma x y c
+  | a, b => .sub a b
+
+/-- FMA contraction (bottom-up): every sum or difference with a product operand becomes one
+fused operation, which rounds once. Exact values are unchanged (`ev_contract`). -/
+def contract : SExpr → SExpr
+  | .add a b => contractAdd (contract a) (contract b)
+  | .sub a b => contractSub (contract a) (contract b)
+  | .mul a b => .mul (contract a) (contract b)
+  | .neg a => .neg (contract a)
+  | .fma a b c => .fma (contract a) (contract b) (contract c)
+  | .fms a b c => .fms (contract a) (contract b) (contract c)
+  | .fnma a b c => .fnma (contract a) (contract b) (contract c)
+  | e => e
+
 end SExpr
 
 end LeanFFTW.Gen

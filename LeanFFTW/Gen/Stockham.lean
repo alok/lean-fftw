@@ -54,7 +54,7 @@ output expressions `re y_0, im y_0, …`. -/
 def butterfly (fwd : Bool) (R : Nat) (twiddled : Bool) : Array SExpr :=
   let y := bflySym fwd R twiddled
   (Array.range (2 * R)).map fun i =>
-    if i % 2 = 0 then (symOps.get y (i / 2)).parts.1 else (symOps.get y (i / 2)).parts.2
+    (if i % 2 = 0 then (symOps.get y (i / 2)).parts.1 else (symOps.get y (i / 2)).parts.2).contract
 
 /-- Input variable names of generated code. -/
 def vName (i : Nat) : String := s!"v{i}"
@@ -368,16 +368,16 @@ def ditName (R vl : Nat) (fwd : Bool) : String := s!"lf_dit_r{R}_v{vl}_{dirTag f
 def ditLastName (R vl : Nat) (fwd : Bool) : String := s!"lf_ditlast_r{R}_v{vl}_{dirTag fwd}"
 
 /-- First (leaf) pass of the in-place schedule: interleaved `in` → blocked `out`, groups
-`g ∈ [g0, g1)`. Requires `VL ∣ R` and `VL ∣ N/R`. -/
+`g ∈ [g0, g1)`. Requires `VL ∣ R` and `VL ∣ N/R`. Groups `g = g0 + i·gs`, `i < gn`. -/
 def emitLeaf (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let ty := t.ty
   let p := t.pre
   let k := (butterflyK fwd R false).inst t "    " "" vName
   let mut ls : List String := [
-    s!"static void {leafName R vl fwd}(const double *restrict in, double *restrict out, size_t N, const unsigned *restrict gofs, const unsigned *restrict ldel, size_t g0, size_t g1) \{",
+    s!"static void {leafName R vl fwd}(const double *restrict in, double *restrict out, size_t N, const unsigned *restrict gofs, const unsigned *restrict ldel, size_t g0, size_t gn, size_t gs) \{",
     s!"  const size_t NR = N / {R};",
-    s!"  for (size_t g = g0; g < g1; ++g) \{",
+    s!"  for (size_t g = g0; g < g0 + gn * gs; g += gs) \{",
     s!"    const size_t j = g * {vl};",
     "    double *const ob = out + 2 * (size_t)gofs[g];"]
   for r in [0:R] do
@@ -411,15 +411,15 @@ def ditLoads (R vl : Nat) : List String := Id.run do
       s!"      const {t.ty} {vName (2 * R + 2 * (r - 1) + 1)} = {t.pre}_loadu_pd(tw + {2 * (r - 1) + 1} * ns + q);"]
   return ls
 
-/-- Middle pass of the in-place schedule, blocks `b ∈ [b0, b1)` of size `ns·R`. Requires
-`VL ∣ ns`. -/
+/-- Middle pass of the in-place schedule, blocks `b ∈ [b0, b1)` of size `ns·R`, butterflies
+`q ∈ [q0, q1)` (multiples of `VL`) of each block. Requires `VL ∣ ns`. -/
 def emitDit (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let k := (butterflyK fwd R true).inst t "      " "" vName
   let mut ls : List String := [
-    s!"static void {ditName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1) \{",
+    s!"static void {ditName R vl fwd}(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1) \{",
     "  for (size_t b = b0; b < b1; ++b) {",
-    s!"    for (size_t q = 0; q < ns; q += {vl}) \{",
+    s!"    for (size_t q = q0; q < q1; q += {vl}) \{",
     s!"      const size_t c = b * ns * {R} + q;"]
   ls := ls ++ ditLoads R vl
   ls := ls ++ k.lines

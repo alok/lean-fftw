@@ -20,8 +20,8 @@ typedef void (*lf_fused_fn)(const double *in, double *out, const double *restric
 
 /* in-place schedule (blocked layout: VL re, VL im per block of VL complex numbers) */
 typedef void (*lf_leaf_fn)(const double *restrict in, double *restrict out, size_t N,
-                           const unsigned *restrict gofs, const unsigned *restrict ldel, size_t g0, size_t g1);
-typedef void (*lf_dit_fn)(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1);
+                           const unsigned *restrict gofs, const unsigned *restrict ldel, size_t g0, size_t gn, size_t gs);
+typedef void (*lf_dit_fn)(double *x, const double *restrict tw, size_t ns, size_t b0, size_t b1, size_t q0, size_t q1);
 typedef void (*lf_ditlast_fn)(double *x, const double *restrict tw, size_t ns, size_t q0, size_t q1);
 lf_leaf_fn lf_get_leaf(int R, int vl, int fwd);
 lf_dit_fn lf_get_dit(int R, int vl, int fwd);

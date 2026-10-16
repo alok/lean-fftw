@@ -20,6 +20,9 @@ struct lf_plan {
      lf_dit_fn dit[LF_MAXPASS];
      lf_ditlast_fn ditlast;
      unsigned *gofs, ldel[8];
+     size_t nst[LF_MAXPASS + 1];  /* ns of each pass (nst[s] = N) */
+     int T;                   /* 0: pass by pass; else passes < T run per group of blocks */
+     size_t Q;                /* 0: outer passes pass by pass; else in chunks of Q butterflies */
      double *tw;            /* all twiddle tables */
      size_t twoff[LF_MAXPASS];
      double *buf;           /* LF_STOCKHAM: two split work arrays, 4N doubles;
@@ -93,7 +96,7 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
 {
      int vl = lf_mode_vl(N, fwd, s, R, mode);
      lf_plan *p;
-     size_t nst[LF_MAXPASS];
+     size_t nst[LF_MAXPASS + 1];
      if (!vl) return 0;
      p = calloc(1, sizeof *p);
      p->N = N; p->fwd = fwd; p->s = s; p->vl = vl; p->mode = mode;
@@ -103,7 +106,8 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
           return p;
      }
      nst[0] = 1;
-     for (int t = 1; t < s; ++t) nst[t] = nst[t - 1] * (size_t)R[t - 1];
+     for (int t = 1; t <= s; ++t) nst[t] = nst[t - 1] * (size_t)R[t - 1];
+     memcpy(p->nst, nst, sizeof nst);
      if (mode == LF_FUSED) p->fused = lf_get_fused(R[0], R[1], vl, fwd);
      else if (mode == LF_STOCKHAM) {
           p->first = lf_get_first(R[0], vl, fwd);
@@ -152,15 +156,39 @@ void lf_execute(const lf_plan *p, const double *in, double *out)
      }
      if (p->mode == LF_FUSED) { p->fused(in, out, p->tw); return; }
      if (p->mode == LF_INPLACE) {
-          const int s = p->s;
+          const int s = p->s, T = p->T;
+          const size_t *nst = p->nst, vl = (size_t)p->vl;
           if (in == out) { memcpy(p->buf, in, 2 * N * sizeof(double)); in = p->buf; }
-          p->leaf(in, out, N, p->gofs, p->ldel, 0, N / (size_t)p->R[0] / (size_t)p->vl);
-          ns = (size_t)p->R[0];
-          for (int t = 1; t < s - 1; ++t) {
-               p->dit[t](out, p->tw + p->twoff[t], ns, 0, N / (ns * (size_t)p->R[t]));
-               ns *= (size_t)p->R[t];
+          if (T == 0) {
+               p->leaf(in, out, N, p->gofs, p->ldel, 0, N / (size_t)p->R[0] / vl, 1);
+               for (int t = 1; t < s - 1; ++t)
+                    p->dit[t](out, p->tw + p->twoff[t], nst[t], 0, N / nst[t + 1], 0, nst[t]);
+               p->ditlast(out, p->tw + p->twoff[s - 1], nst[s - 1], 0, nst[s - 1]);
+               return;
           }
-          p->ditlast(out, p->tw + p->twoff[s - 1], ns, 0, ns);
+          {
+               /* passes < T: per group of vl blocks of size nst[T] (leaves dl + l + D m) */
+               const size_t D = N / nst[T], gn = nst[T] / (size_t)p->R[0];
+               for (size_t dl = 0; dl < D; dl += vl) {
+                    p->leaf(in, out, N, p->gofs, p->ldel, dl / vl, gn, D / vl);
+                    for (size_t l = 0; l < vl; ++l) {
+                         const size_t beta = ((size_t)p->gofs[dl / vl] + p->ldel[l]) / nst[T];
+                         for (int t = 1; t < T; ++t)
+                              p->dit[t](out, p->tw + p->twoff[t], nst[t], beta * (nst[T] / nst[t + 1]),
+                                        (beta + 1) * (nst[T] / nst[t + 1]), 0, nst[t]);
+                    }
+               }
+          }
+          {
+               /* passes >= T, on the positions q + j nst[T] for q in chunks of Q */
+               const size_t Q = p->Q ? p->Q : nst[T];
+               for (size_t q0 = 0; q0 < nst[T]; q0 += Q)
+                    for (int t = T; t < s; ++t)
+                         for (size_t a = q0; a < nst[t]; a += nst[T]) {
+                              if (t < s - 1) p->dit[t](out, p->tw + p->twoff[t], nst[t], 0, N / nst[t + 1], a, a + Q);
+                              else p->ditlast(out, p->tw + p->twoff[t], nst[t], a, a + Q);
+                         }
+          }
           return;
      }
      {
@@ -174,6 +202,24 @@ void lf_execute(const lf_plan *p, const double *in, double *out)
           }
           p->last(src, src + N, out, p->tw + p->twoff[p->s - 1], N, ns);
      }
+}
+
+int lf_set_blocking(lf_plan *p, int T, size_t Q)
+{
+     if (p->mode != LF_INPLACE || T < 0 || T >= p->s) return 0;
+     if (T > 0) {
+          size_t D = p->N / p->nst[T];
+          if (D < (size_t)p->vl || D % (size_t)p->vl) return 0;
+          if (Q && (Q % (size_t)p->vl || p->nst[T] % Q)) return 0;
+     } else if (Q) return 0;
+     p->T = T; p->Q = Q;
+     return 1;
+}
+
+int lf_plan_info(const lf_plan *p, int *mode, int *T, size_t *Q)
+{
+     *mode = p->mode; *T = p->T; *Q = p->Q;
+     return p->s;
 }
 
 void lf_destroy(lf_plan *p)

@@ -27,6 +27,15 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
 /* Execute: in and out are interleaved arrays of N complex values; in == out allowed. */
 void lf_execute(const lf_plan *p, const double *in, double *out);
 
+/* Cache blocking of an LF_INPLACE plan (a reordering of independent butterflies; the
+   operations are unchanged). T = 0: pass by pass. T >= 1: the first T passes run per group
+   of VL blocks of size R[0]...R[T-1], and the remaining passes run on chunks of Q
+   butterflies (Q = 0: whole passes). Returns 0 (plan unchanged) if invalid. */
+int lf_set_blocking(lf_plan *p, int T, size_t Q);
+
+/* Size and schedule of a plan. */
+int lf_plan_info(const lf_plan *p, int *mode, int *T, size_t *Q);
+
 void lf_destroy(lf_plan *p);
 
 /* Number of doubles of the twiddle tables of a radix sequence. */
