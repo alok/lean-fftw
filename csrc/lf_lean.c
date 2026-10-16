@@ -53,7 +53,7 @@ void lf_lean_reference(size_t N, int fwd, int s, const int *R, const double *in,
 
 /* ---- enumeration of radix sequences: first radix, then a non-increasing tail ---- */
 
-static const int firsts[] = { 4, 8, 16, 32 };
+static const int firsts[] = { 2, 4, 8, 16, 32 };
 static const int mids[] = { 32, 16, 8, 4, 2 };
 
 struct en { size_t N; int fwd; void (*f)(int, const int *, int, void *); void *ctx; int R[LF_MAXPASS]; };
@@ -61,7 +61,7 @@ struct en { size_t N; int fwd; void (*f)(int, const int *, int, void *); void *c
 static void tail(struct en *e, int s, size_t M, int maxi)
 {
      if (M == 1) {
-          for (int mode = 0; mode < 3; ++mode)
+          for (int mode = 0; mode < 4; ++mode)
                if (lf_mode_vl(e->N, e->fwd, s, e->R, mode)) e->f(s, e->R, mode, e->ctx);
           return;
      }
@@ -77,7 +77,7 @@ void lf_enumerate(size_t N, int fwd, void (*f)(int, const int *, int, void *), v
 {
      struct en e = { N, fwd, f, ctx, { 0 } };
      e.R[0] = (int)N;
-     if (lf_mode_vl(N, fwd, 1, e.R, LF_STOCKHAM)) { f(1, e.R, 0, ctx); return; }
+     if (lf_mode_vl(N, fwd, 1, e.R, LF_STOCKHAM)) f(1, e.R, 0, ctx);
      for (size_t i = 0; i < sizeof firsts / sizeof firsts[0]; ++i)
           if (N % (size_t)firsts[i] == 0 && N > (size_t)firsts[i]) {
                e.R[0] = firsts[i];

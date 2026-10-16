@@ -9,8 +9,9 @@ struct lf_plan {
      int fwd, s, vl, mode;
      int R[LF_MAXPASS];
      lf_small_fn small;
-     /* LF_FUSED */
+     /* LF_FUSED, LF_CFUSED */
      lf_fused_fn fused;
+     lf_cfused_fn cfused;
      /* LF_STOCKHAM */
      lf_first_fn first;
      lf_mid_fn mid[LF_MAXPASS];
@@ -68,6 +69,14 @@ int lf_mode_vl(size_t N, int fwd, int s, const int *R, int mode)
      static const int vls[] = { 8, 4 };
      if (s < 1 || s > LF_MAXPASS) return 0;
      if (s == 1) return (mode == LF_STOCKHAM && (size_t)R[0] == N && (N == 1 || lf_get_small((int)N, fwd))) ? 1 : 0;
+     if (mode == LF_CFUSED) {
+          static const int vlcs[] = { 4, 2 };
+          if (s != 2 || (size_t)R[0] * (size_t)R[1] != N) return 0;
+          for (int i = 0; i < 2; ++i)
+               if (R[0] % vlcs[i] == 0 && R[1] % vlcs[i] == 0 && lf_get_cfused(R[0], R[1], vlcs[i], fwd))
+                    return vlcs[i];
+          return 0;
+     }
      for (int i = 0; i < 2; ++i) {
           int vl = vls[i];
           if (mode == LF_FUSED) {
@@ -108,6 +117,7 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
      nst[0] = 1;
      for (int t = 1; t <= s; ++t) nst[t] = nst[t - 1] * (size_t)R[t - 1];
      memcpy(p->nst, nst, sizeof nst);
+     if (mode == LF_CFUSED) { p->cfused = lf_get_cfused(R[0], R[1], vl, fwd); return p; }
      if (mode == LF_FUSED) p->fused = lf_get_fused(R[0], R[1], vl, fwd);
      else if (mode == LF_STOCKHAM) {
           p->first = lf_get_first(R[0], vl, fwd);
@@ -154,6 +164,7 @@ void lf_execute(const lf_plan *p, const double *in, double *out)
           else { out[0] = in[0]; out[1] = in[1]; }
           return;
      }
+     if (p->mode == LF_CFUSED) { p->cfused(in, out); return; }
      if (p->mode == LF_FUSED) { p->fused(in, out, p->tw); return; }
      if (p->mode == LF_INPLACE) {
           const int s = p->s, T = p->T;
