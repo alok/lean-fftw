@@ -40,7 +40,7 @@ lemma stdAddChar_natCast_neg (a : ℕ) :
   push_cast at h
   rw [h, twiddle]
   congr 1
-  push_cast
+  simp only [ite_true]
   ring
 
 lemma stdAddChar_natCast (a : ℕ) :
@@ -56,11 +56,11 @@ lemma stdAddChar_natCast (a : ℕ) :
 lemma sum_zmod_eq_sum_range (f : ℕ → ℂ) :
     ∑ j : ZMod n, f j.val = ∑ j ∈ range n, f j := by
   rw [Finset.sum_range]
-  exact Fintype.sum_equiv (ZMod.finEquiv n).symm _ _ (fun j => by
-    simp [ZMod.finEquiv])
+  obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 := Nat.exists_eq_succ_of_ne_zero (NeZero.ne n)
+  rfl
 
 /-- **The forward `dftSum` is Mathlib's `ZMod.dft`.** -/
-theorem dftSum_true_eq_dft (x : ℕ → ℂ) (k : ℕ) (hk : k < n) :
+theorem dftSum_true_eq_dft (x : ℕ → ℂ) (k : ℕ) (_hk : k < n) :
     dftSum true n x k = 𝓕 (fun j : ZMod n => x j.val) (k : ZMod n) := by
   rw [dft_apply, dftSum]
   rw [← sum_zmod_eq_sum_range (fun j => twiddle true n (j * k) * x j)]
@@ -71,7 +71,7 @@ theorem dftSum_true_eq_dft (x : ℕ → ℂ) (k : ℕ) (hk : k < n) :
   simp [ZMod.natCast_val, ZMod.cast_id]
 
 /-- **The backward `dftSum` is `n` times Mathlib's inverse DFT.** -/
-theorem dftSum_false_eq_invDft (x : ℕ → ℂ) (k : ℕ) (hk : k < n) :
+theorem dftSum_false_eq_invDft (x : ℕ → ℂ) (k : ℕ) (_hk : k < n) :
     dftSum false n x k = (n : ℂ) * 𝓕⁻ (fun j : ZMod n => x j.val) (k : ZMod n) := by
   rw [invDFT_apply, smul_eq_mul, ← mul_assoc, mul_inv_cancel₀ (by exact_mod_cast NeZero.ne n),
     one_mul, dftSum]
