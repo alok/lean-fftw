@@ -88,18 +88,19 @@ def fixedToFloat (v : Nat) : Float :=
 /-- Negation that never produces `-0.0` (keeps twiddle zeros positive). -/
 @[inline] def negZ (x : Float) : Float := if x == 0.0 then 0.0 else -x
 
-/-- `(cos (2π k/n), sin (2π k/n))` as binary64, computed from exact integer arithmetic.
-Requires `n > 0`; `k` is reduced modulo `n`. -/
-def cosSin2Pi (k n : Nat) : Float × Float :=
+/-- `(cos φ, sin φ)` for `φ = 2π · num / (8n)`, `0 ≤ num ≤ n`, as binary64. -/
+def smallAt (n num : Nat) : Float × Float :=
+  let (c, s) := cosSinFixed (angleFixed num (8 * n))
+  (fixedToFloat c, fixedToFloat s)
+
+/-- The exact octant reduction of `cosSin2Pi`, parameterized by the evaluator `small` of
+the reduced angle (`small num ≈ (cos, sin) (2π · num / (8n))`, `num ≤ n`). -/
+@[inline] def cosSin2PiWith (small : Nat → Float × Float) (k n : Nat) : Float × Float :=
   if n == 0 then (1.0, 0.0) else
   let k := k % n
   -- position in eighths of a turn: 8k = oct·n + rem, 0 ≤ rem < n
   let oct := (8 * k) / n
   let rem := (8 * k) % n
-  -- base angle within the octant, as the fraction rem/(8n) of a full turn
-  let small (num : Nat) : Float × Float :=
-    let (c, s) := cosSinFixed (angleFixed num (8 * n))
-    (fixedToFloat c, fixedToFloat s)
   -- angle = (oct + rem/n) · π/4.  Reduce to φ ∈ [0, π/4] using exact symmetries.
   -- For odd octants use the complementary angle (n - rem)/(8n).
   let (c, s) := if oct % 2 == 0 then small rem else small (n - rem)
@@ -113,5 +114,17 @@ def cosSin2Pi (k n : Nat) : Float × Float :=
   | 5 => (negZ s, negZ c)
   | 6 => (s, negZ c)
   | _ => (c, negZ s)
+
+/-- `(cos (2π k/n), sin (2π k/n))` as binary64, computed from exact integer arithmetic.
+Requires `n > 0`; `k` is reduced modulo `n`. -/
+def cosSin2Pi (k n : Nat) : Float × Float := cosSin2PiWith (smallAt n) k n
+
+/-- The table `m ↦ cosSin2Pi m n` for `m < n`. Every reduced angle `num` is a multiple of
+`g = gcd 8 n`, so only `n / g + 1` values are evaluated; entry `m` is computed by the same
+`cosSin2PiWith` as `cosSin2Pi m n`, from the same `smallAt n num`. -/
+def cosSin2PiTable (n : Nat) : Array (Float × Float) :=
+  let g := Nat.gcd 8 n
+  let memo : Array (Float × Float) := (Array.range (n / g + 1)).map fun i => smallAt n (g * i)
+  (Array.range n).map fun m => cosSin2PiWith (fun num => memo.getD (num / g) (1.0, 0.0)) m n
 
 end LeanFFTW.Trig

@@ -2,6 +2,8 @@
 Copyright (c) 2026 Lean FFTW contributors. Released under MIT license.
 -/
 import LeanFFTW.Core.Problem
+import LeanFFTW.Core.FastPlan
+import LeanFFTW.Gen.Stockham
 
 /-!
 # C entry points of the generic engine

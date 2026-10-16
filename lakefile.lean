@@ -20,4 +20,4 @@ lean_lib LeanFFTW where
 /-- The executable engine (no Mathlib dependency), packaged as a static library for C. -/
 lean_lib LeanFFTWExec where
   roots := #[`LeanFFTW.FFI]
-  globs := #[.one `LeanFFTW.FFI, .submodules `LeanFFTW.Core]
+  globs := #[.one `LeanFFTW.FFI, .submodules `LeanFFTW.Core, .submodules `LeanFFTW.Gen]
