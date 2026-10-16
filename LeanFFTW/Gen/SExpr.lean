@@ -30,7 +30,7 @@ inductive Cst where
   | sin (k n : Nat)
   /-- `√2/2 = cos(π/4)` -/
   | sqrthalf
-  deriving BEq, Hashable, Repr, Inhabited
+  deriving DecidableEq, Hashable, Repr, Inhabited
 
 namespace Cst
 

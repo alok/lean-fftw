@@ -13,7 +13,7 @@ double *lf_lean_base_table(size_t N, int fwd);
 void lf_lean_reference(size_t N, int fwd, int s, const int *R, const double *in, double *out);
 
 /* Enumerate radix sequences covered by generated kernels; calls f for each. */
-void lf_enumerate(size_t N, int fwd, void (*f)(int s, const int *R, void *ctx), void *ctx);
+void lf_enumerate(size_t N, int fwd, void (*f)(int s, const int *R, int fuse, void *ctx), void *ctx);
 
 /* Planner: time every candidate (min over repetitions) and keep the fastest.
    If R_out is non-null, the chosen sequence is stored there and its length in *s_out. */

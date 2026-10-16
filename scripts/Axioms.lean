@@ -6,3 +6,6 @@ import LeanFFTW
 #print axioms LeanFFTW.dftSum_ct
 #print axioms LeanFFTW.exec_mkPlan_exact
 #print axioms LeanFFTW.exec_mkPlan_exact_eq_dft
+#print axioms LeanFFTW.Gen.cse_correct
+#print axioms LeanFFTW.Gen.exec_sym
+#print axioms LeanFFTW.Gen.butterflyK_correct

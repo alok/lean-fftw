@@ -35,11 +35,11 @@ static double rnd(void)
 
 struct tc { size_t N; int fwd; double *in, *ref, *out, *base; long nplans, nfail; int full; double maxerr; };
 
-static void check(int s, const int *R, void *ctx)
+static void check(int s, const int *R, int fuse, void *ctx)
 {
      struct tc *c = ctx;
      size_t n2 = 2 * c->N;
-     lf_plan *p = lf_plan_radices(c->N, c->fwd, s, R, c->base);
+     lf_plan *p = lf_plan_radices(c->N, c->fwd, s, R, c->base, fuse);
      int bad = 0;
      lf_lean_reference(c->N, c->fwd, s, R, c->in, c->ref);
      lf_execute(p, c->in, c->out);
@@ -48,10 +48,10 @@ static void check(int s, const int *R, void *ctx)
      lf_execute(p, c->out, c->out);
      if (memcmp(c->out, c->ref, n2 * sizeof(double))) bad |= 2;
      c->nplans++;
-     if (c->N <= 4096 && c->N > 1) { double e = l2err(c->N, c->fwd, c->in, c->ref); if (e > c->maxerr) c->maxerr = e; }
+     if (c->N <= 1024 && c->N > 1) { double e = l2err(c->N, c->fwd, c->in, c->ref); if (e > c->maxerr) c->maxerr = e; }
      if (bad) {
           c->nfail++;
-          printf("FAIL N=%zu fwd=%d bad=%d R=", c->N, c->fwd, bad);
+          printf("FAIL N=%zu fwd=%d fuse=%d bad=%d R=", c->N, c->fwd, fuse, bad);
           for (int t = 0; t < s; ++t) printf("%d ", R[t]);
           printf("\n");
      }

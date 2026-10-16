@@ -5,120 +5,187 @@ import LeanFFTW.Gen.Sym
 import Std.Data.HashMap
 
 /-!
-# Kernel emission: common-subexpression elimination and C printing
+# Kernels: common-subexpression elimination, evaluation, and C printing
 
-This is the **trusted printing step** of the pipeline (see docs/TRUST.md): it turns the
-symbolic outputs of a kernel into straight-line SSA code and prints it as C. Every SSA
-instruction is one of the `SExpr` operations, printed as the corresponding C operation
-(`+`, `-`, `*`, unary `-`, `fma`) on `double`s or the corresponding AVX-512 intrinsic on
-`__m512d` lanes, so the C code performs exactly the binary64 operations of
-`SExpr.evalF`. CSE only merges structurally identical subexpressions, which denote the
-same value under any deterministic semantics.
+A kernel is straight-line code over *slots*: slots `0 … nIn-1` hold the inputs and slot
+`nIn + i` holds the result of operation `i` (`Kernel`). `cse` turns the symbolic outputs
+of a kernel (`SExpr`s) into a `Kernel`, merging structurally identical subexpressions.
+
+Both kernels and expressions are evaluated over any `Arith` (a choice of the eight
+operations); `cse_correct` (in `LeanFFTW/Proof/Kernel.lean`) states that evaluating the
+kernel gives the values of the expressions for every `Arith` whose `add`, `mul` and fused
+products are commutative in their (first two) arguments, in particular for exact real
+arithmetic, which the correctness proofs use. (CSE orders the operands of commutative
+operations by slot to improve sharing; for binary64 the floating-point error analysis is
+done on the kernel itself, so no commutativity of `Float` operations is assumed.)
+
+Printing as C is the **trusted printing step** (docs/TRUST.md): every operation is printed
+as the corresponding C operation on `double`s (`+ - * -x fma`) or the corresponding
+lane-wise vector intrinsic, so the C code performs exactly the binary64 operations of
+`Kernel.eval floatArith`.
 -/
 
 namespace LeanFFTW.Gen
 
 open Std
 
-/-- One SSA instruction. Operands are SSA names. -/
-inductive Instr where
-  | cst (dst : String) (c : Cst)
-  | zero (dst : String)
-  | add (dst a b : String)
-  | sub (dst a b : String)
-  | mul (dst a b : String)
-  | neg (dst a : String)
-  | fma (dst a b c : String)
-  | fms (dst a b c : String)
-  | fnma (dst a b c : String)
-  deriving Inhabited, Repr
+/-- The eight operations of kernels, over a scalar type `α`. -/
+structure Arith (α : Type) where
+  cst : Cst → α
+  zero : α
+  add : α → α → α
+  sub : α → α → α
+  mul : α → α → α
+  neg : α → α
+  /-- `a * b + c` -/
+  fma : α → α → α → α
+  /-- `a * b - c` -/
+  fms : α → α → α → α
+  /-- `c - a * b` -/
+  fnma : α → α → α → α
 
-structure CSEState where
-  map : HashMap String String := {}
-  code : Array Instr := #[]
-  next : Nat := 0
+/-- Binary64: Lean `Float` operations (IEEE, round to nearest even; `fma` rounds once). -/
+def floatArith : Arith Float where
+  cst c := c.toFloat
+  zero := 0.0
+  add a b := a + b
+  sub a b := a - b
+  mul a b := a * b
+  neg a := -a
+  fma a b c := Float.fma a b c
+  fms a b c := Float.fma a b (-c)
+  fnma a b c := Float.fma (-a) b c
 
-abbrev CSEM := StateM CSEState
+/-- Evaluate an expression over `A`. -/
+def SExpr.evalWith {α : Type} (A : Arith α) (env : Nat → α) : SExpr → α
+  | .input i => env i
+  | .zero => A.zero
+  | .cst c => A.cst c
+  | .add a b => A.add (a.evalWith A env) (b.evalWith A env)
+  | .sub a b => A.sub (a.evalWith A env) (b.evalWith A env)
+  | .mul a b => A.mul (a.evalWith A env) (b.evalWith A env)
+  | .neg a => A.neg (a.evalWith A env)
+  | .fma a b c => A.fma (a.evalWith A env) (b.evalWith A env) (c.evalWith A env)
+  | .fms a b c => A.fms (a.evalWith A env) (b.evalWith A env) (c.evalWith A env)
+  | .fnma a b c => A.fnma (a.evalWith A env) (b.evalWith A env) (c.evalWith A env)
 
-def fresh (key : String) (mk : String → Instr) : CSEM String := do
-  let s ← get
-  match s.map.get? key with
-  | some v => return v
-  | none =>
-    let v := s!"t{s.next}"
-    set { s with map := s.map.insert key v, code := s.code.push (mk v), next := s.next + 1 }
-    return v
+/-- One kernel operation; operands are slots. -/
+inductive KOp where
+  | cst (c : Cst)
+  | zero
+  | add (a b : Nat)
+  | sub (a b : Nat)
+  | mul (a b : Nat)
+  | neg (a : Nat)
+  | fma (a b c : Nat)
+  | fms (a b c : Nat)
+  | fnma (a b c : Nat)
+  deriving DecidableEq, Hashable, Repr, Inhabited
 
-/-- Names of inputs are supplied by the caller (`inName i`). -/
-partial def cse (inName : Nat → String) : SExpr → CSEM String
-  | .input i => return inName i
-  | .zero => fresh "0" .zero
-  | .cst c => fresh s!"c {repr c}" (fun v => .cst v c)
-  | .add a b => do
-      let x ← cse inName a; let y ← cse inName b
-      -- addition is commutative in binary64: canonical operand order improves sharing
-      let (x, y) := if x ≤ y then (x, y) else (y, x)
-      fresh s!"+ {x} {y}" (fun v => .add v x y)
-  | .sub a b => do
-      let x ← cse inName a; let y ← cse inName b
-      fresh s!"- {x} {y}" (fun v => .sub v x y)
-  | .mul a b => do
-      let x ← cse inName a; let y ← cse inName b
-      let (x, y) := if x ≤ y then (x, y) else (y, x)
-      fresh s!"* {x} {y}" (fun v => .mul v x y)
-  | .neg a => do
-      let x ← cse inName a
-      fresh s!"n {x}" (fun v => .neg v x)
-  | .fma a b c => do
-      let x ← cse inName a; let y ← cse inName b; let z ← cse inName c
-      let (x, y) := if x ≤ y then (x, y) else (y, x)
-      fresh s!"fma {x} {y} {z}" (fun v => .fma v x y z)
-  | .fms a b c => do
-      let x ← cse inName a; let y ← cse inName b; let z ← cse inName c
-      let (x, y) := if x ≤ y then (x, y) else (y, x)
-      fresh s!"fms {x} {y} {z}" (fun v => .fms v x y z)
-  | .fnma a b c => do
-      let x ← cse inName a; let y ← cse inName b; let z ← cse inName c
-      let (x, y) := if x ≤ y then (x, y) else (y, x)
-      fresh s!"fnma {x} {y} {z}" (fun v => .fnma v x y z)
-
-/-- A straight-line kernel: SSA code plus the SSA names of its outputs. -/
-structure SSA where
-  code : Array Instr
-  outs : Array String
+/-- Straight-line code: `nIn` inputs, operations, and the slots of the outputs. -/
+structure Kernel where
+  nIn : Nat
+  ops : Array KOp
+  outs : Array Nat
   deriving Inhabited
 
-/-- Run CSE over a list of output expressions. -/
-def toSSA (inName : Nat → String) (outs : Array SExpr) : SSA :=
-  let (names, s) := (outs.mapM (cse inName)).run {}
-  ⟨s.code, names⟩
+/-- Apply an operation to the values `g` of the slots. -/
+def KOp.eval {α : Type} (A : Arith α) (g : Nat → α) : KOp → α
+  | .cst c => A.cst c
+  | .zero => A.zero
+  | .add a b => A.add (g a) (g b)
+  | .sub a b => A.sub (g a) (g b)
+  | .mul a b => A.mul (g a) (g b)
+  | .neg a => A.neg (g a)
+  | .fma a b c => A.fma (g a) (g b) (g c)
+  | .fms a b c => A.fms (g a) (g b) (g c)
+  | .fnma a b c => A.fnma (g a) (g b) (g c)
+
+/-- Values of all slots, given the inputs. -/
+def Kernel.slots {α : Type} [Inhabited α] (A : Arith α) (k : Kernel) (inp : Array α) :
+    Array α :=
+  k.ops.foldl (fun env op => env.push (op.eval A fun i => env.getD i default)) inp
+
+/-- Values of the outputs. -/
+def Kernel.eval {α : Type} [Inhabited α] (A : Arith α) (k : Kernel) (inp : Array α) :
+    Array α :=
+  let env := k.slots A inp
+  k.outs.map fun o => env.getD o default
+
+/-! ## Common-subexpression elimination -/
+
+structure CSEState where
+  map : HashMap KOp Nat := {}
+  ops : Array KOp := #[]
+
+/-- The slot of an operation, reusing an existing slot for an identical operation. -/
+def node (nIn : Nat) (op : KOp) (s : CSEState) : Nat × CSEState :=
+  match s.map[op]? with
+  | some v => (v, s)
+  | none => (nIn + s.ops.size, { map := s.map.insert op (nIn + s.ops.size), ops := s.ops.push op })
+
+/-- Commutative operations get their operands in slot order. -/
+def ord2 (x y : Nat) (f : Nat → Nat → KOp) : KOp := if x ≤ y then f x y else f y x
+
+/-- Slot of an expression (inputs `i < nIn` are slot `i`), threading the CSE state. -/
+def cseExpr (nIn : Nat) : SExpr → CSEState → Nat × CSEState
+  | .input i, s => (i, s)
+  | .zero, s => node nIn .zero s
+  | .cst c, s => node nIn (.cst c) s
+  | .add a b, s =>
+      let r1 := cseExpr nIn a s
+      let r2 := cseExpr nIn b r1.2
+      node nIn (ord2 r1.1 r2.1 .add) r2.2
+  | .sub a b, s =>
+      let r1 := cseExpr nIn a s
+      let r2 := cseExpr nIn b r1.2
+      node nIn (.sub r1.1 r2.1) r2.2
+  | .mul a b, s =>
+      let r1 := cseExpr nIn a s
+      let r2 := cseExpr nIn b r1.2
+      node nIn (ord2 r1.1 r2.1 .mul) r2.2
+  | .neg a, s =>
+      let r1 := cseExpr nIn a s
+      node nIn (.neg r1.1) r1.2
+  | .fma a b c, s =>
+      let r1 := cseExpr nIn a s
+      let r2 := cseExpr nIn b r1.2
+      let r3 := cseExpr nIn c r2.2
+      node nIn (ord2 r1.1 r2.1 fun x y => .fma x y r3.1) r3.2
+  | .fms a b c, s =>
+      let r1 := cseExpr nIn a s
+      let r2 := cseExpr nIn b r1.2
+      let r3 := cseExpr nIn c r2.2
+      node nIn (ord2 r1.1 r2.1 fun x y => .fms x y r3.1) r3.2
+  | .fnma a b c, s =>
+      let r1 := cseExpr nIn a s
+      let r2 := cseExpr nIn b r1.2
+      let r3 := cseExpr nIn c r2.2
+      node nIn (ord2 r1.1 r2.1 fun x y => .fnma x y r3.1) r3.2
+
+/-- Slots of a list of expressions. -/
+def cseList (nIn : Nat) : List SExpr → CSEState → List Nat × CSEState
+  | [], s => ([], s)
+  | e :: es, s =>
+      let r1 := cseExpr nIn e s
+      let r2 := cseList nIn es r1.2
+      (r1.1 :: r2.1, r2.2)
+
+/-- The kernel computing `outs` from `nIn` inputs. -/
+def cse (nIn : Nat) (outs : Array SExpr) : Kernel :=
+  let r := cseList nIn outs.toList {}
+  ⟨nIn, r.2.ops, r.1.toArray⟩
 
 /-- Operation counts `(adds/subs/negs, muls, fmas)`. -/
-def SSA.counts (k : SSA) : Nat × Nat × Nat :=
-  k.code.foldl (fun (a, m, f) i =>
-    match i with
+def Kernel.counts (k : Kernel) : Nat × Nat × Nat :=
+  k.ops.foldl (fun (a, m, f) op =>
+    match op with
     | .add .. | .sub .. | .neg .. => (a + 1, m, f)
     | .mul .. => (a, m + 1, f)
     | .fma .. | .fms .. | .fnma .. => (a, m, f + 1)
     | _ => (a, m, f)) (0, 0, 0)
 
-/-- Binary64 evaluation of SSA code (inputs by name). Used to cross-check the CSE step
-against `SExpr.evalF`. -/
-def SSA.evalF (k : SSA) (inp : String → Float) : Array Float := Id.run do
-  let mut env : HashMap String Float := {}
-  let look (env : HashMap String Float) (v : String) : Float := (env.get? v).getD (inp v)
-  for i in k.code do
-    env := match i with
-      | .cst d c => env.insert d c.toFloat
-      | .zero d => env.insert d 0.0
-      | .add d a b => env.insert d (look env a + look env b)
-      | .sub d a b => env.insert d (look env a - look env b)
-      | .mul d a b => env.insert d (look env a * look env b)
-      | .neg d a => env.insert d (-(look env a))
-      | .fma d a b c => env.insert d (Float.fma (look env a) (look env b) (look env c))
-      | .fms d a b c => env.insert d (Float.fma (look env a) (look env b) (-(look env c)))
-      | .fnma d a b c => env.insert d (Float.fma (-(look env a)) (look env b) (look env c))
-  return k.outs.map (look env)
+/-! ## C printing -/
 
 /-- Target instruction sets for printing. -/
 inductive Target where
@@ -147,34 +214,44 @@ def Target.pre : Target → String
   | .avx2 => "_mm256"
   | .avx512 => "_mm512"
 
-/-- Print one instruction. Vector targets apply the scalar operation in every lane
-(`_add_pd`, `_sub_pd`, `_mul_pd`, sign flip by `xor` with `-0.0`, and the fused
-`_fmadd_pd` = `a*b+c`, `_fmsub_pd` = `a*b-c`, `_fnmadd_pd` = `-(a*b)+c`, each with one
-rounding). -/
-def Instr.toC (t : Target) (i : Instr) : String :=
+/-- Print the operation defining variable `d`, with operand names given by `n`. Vector
+targets apply the scalar operation in every lane (`_add_pd`, `_sub_pd`, `_mul_pd`, sign
+flip by `xor` with `-0.0`, and the fused `_fmadd_pd` = `a*b+c`, `_fmsub_pd` = `a*b-c`,
+`_fnmadd_pd` = `-(a*b)+c`, each with one rounding). -/
+def KOp.toC (t : Target) (d : String) (n : Nat → String) (op : KOp) : String :=
   let ty := t.ty
   let p := t.pre
-  match t, i with
-  | .scalar, .cst d c => s!"const double {d} = {c.cLiteral};"
-  | .scalar, .zero d => s!"const double {d} = 0.0;"
-  | .scalar, .add d a b => s!"const double {d} = {a} + {b};"
-  | .scalar, .sub d a b => s!"const double {d} = {a} - {b};"
-  | .scalar, .mul d a b => s!"const double {d} = {a} * {b};"
-  | .scalar, .neg d a => s!"const double {d} = -{a};"
-  | .scalar, .fma d a b c => s!"const double {d} = fma({a}, {b}, {c});"
-  | .scalar, .fms d a b c => s!"const double {d} = fma({a}, {b}, -{c});"
-  | .scalar, .fnma d a b c => s!"const double {d} = fma(-{a}, {b}, {c});"
-  | _, .cst d c => s!"const {ty} {d} = {p}_set1_pd({c.cLiteral});"
-  | _, .zero d => s!"const {ty} {d} = {p}_setzero_pd();"
-  | _, .add d a b => s!"const {ty} {d} = {p}_add_pd({a}, {b});"
-  | _, .sub d a b => s!"const {ty} {d} = {p}_sub_pd({a}, {b});"
-  | _, .mul d a b => s!"const {ty} {d} = {p}_mul_pd({a}, {b});"
-  | _, .neg d a => s!"const {ty} {d} = {p}_xor_pd({a}, {p}_set1_pd(-0.0));"
-  | _, .fma d a b c => s!"const {ty} {d} = {p}_fmadd_pd({a}, {b}, {c});"
-  | _, .fms d a b c => s!"const {ty} {d} = {p}_fmsub_pd({a}, {b}, {c});"
-  | _, .fnma d a b c => s!"const {ty} {d} = {p}_fnmadd_pd({a}, {b}, {c});"
+  match t, op with
+  | .scalar, .cst c => s!"const double {d} = {c.cLiteral};"
+  | .scalar, .zero => s!"const double {d} = 0.0;"
+  | .scalar, .add a b => s!"const double {d} = {n a} + {n b};"
+  | .scalar, .sub a b => s!"const double {d} = {n a} - {n b};"
+  | .scalar, .mul a b => s!"const double {d} = {n a} * {n b};"
+  | .scalar, .neg a => s!"const double {d} = -{n a};"
+  | .scalar, .fma a b c => s!"const double {d} = fma({n a}, {n b}, {n c});"
+  | .scalar, .fms a b c => s!"const double {d} = fma({n a}, {n b}, -{n c});"
+  | .scalar, .fnma a b c => s!"const double {d} = fma(-{n a}, {n b}, {n c});"
+  | _, .cst c => s!"const {ty} {d} = {p}_set1_pd({c.cLiteral});"
+  | _, .zero => s!"const {ty} {d} = {p}_setzero_pd();"
+  | _, .add a b => s!"const {ty} {d} = {p}_add_pd({n a}, {n b});"
+  | _, .sub a b => s!"const {ty} {d} = {p}_sub_pd({n a}, {n b});"
+  | _, .mul a b => s!"const {ty} {d} = {p}_mul_pd({n a}, {n b});"
+  | _, .neg a => s!"const {ty} {d} = {p}_xor_pd({n a}, {p}_set1_pd(-0.0));"
+  | _, .fma a b c => s!"const {ty} {d} = {p}_fmadd_pd({n a}, {n b}, {n c});"
+  | _, .fms a b c => s!"const {ty} {d} = {p}_fmsub_pd({n a}, {n b}, {n c});"
+  | _, .fnma a b c => s!"const {ty} {d} = {p}_fnmadd_pd({n a}, {n b}, {n c});"
 
-def SSA.bodyC (k : SSA) (t : Target) (indent : String := "  ") : String :=
-  String.join (k.code.toList.map fun i => indent ++ i.toC t ++ "\n")
+/-- A kernel placed in a C function: its lines, and the C names of its outputs. -/
+structure Inst where
+  lines : List String
+  outs : Array String
+
+/-- Place a kernel in a C function: inputs are bound to the C expressions `bind i`, and
+slot `s ≥ nIn` is the variable `{pfx}t{s}` (distinct prefixes keep instances apart). -/
+def Kernel.inst (k : Kernel) (t : Target) (ind pfx : String) (bind : Nat → String) : Inst :=
+  let n (s : Nat) : String := if s < k.nIn then bind s else s!"{pfx}t{s}"
+  let lines := (List.range k.ops.size).map fun i =>
+    ind ++ (k.ops[i]!).toC t (n (k.nIn + i)) n
+  ⟨lines, k.outs.map n⟩
 
 end LeanFFTW.Gen

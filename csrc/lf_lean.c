@@ -56,12 +56,13 @@ void lf_lean_reference(size_t N, int fwd, int s, const int *R, const double *in,
 static const int firsts[] = { 4, 8, 16, 32 };
 static const int mids[] = { 32, 16, 8, 4, 2 };
 
-struct en { size_t N; int fwd; void (*f)(int, const int *, void *); void *ctx; int R[LF_MAXPASS]; };
+struct en { size_t N; int fwd; void (*f)(int, const int *, int, void *); void *ctx; int R[LF_MAXPASS]; };
 
 static void tail(struct en *e, int s, size_t M, int maxi)
 {
      if (M == 1) {
-          if (lf_radices_vl(e->N, e->fwd, s, e->R)) e->f(s, e->R, e->ctx);
+          if (lf_radices_vl(e->N, e->fwd, s, e->R)) e->f(s, e->R, 0, e->ctx);
+          if (lf_fused_vl(e->N, e->fwd, s, e->R)) e->f(s, e->R, 1, e->ctx);
           return;
      }
      if (s >= LF_MAXPASS) return;
@@ -72,11 +73,11 @@ static void tail(struct en *e, int s, size_t M, int maxi)
           }
 }
 
-void lf_enumerate(size_t N, int fwd, void (*f)(int, const int *, void *), void *ctx)
+void lf_enumerate(size_t N, int fwd, void (*f)(int, const int *, int, void *), void *ctx)
 {
      struct en e = { N, fwd, f, ctx, { 0 } };
      e.R[0] = (int)N;
-     if (lf_radices_vl(N, fwd, 1, e.R)) { f(1, e.R, ctx); return; }
+     if (lf_radices_vl(N, fwd, 1, e.R)) { f(1, e.R, 0, ctx); return; }
      for (size_t i = 0; i < sizeof firsts / sizeof firsts[0]; ++i)
           if (N % (size_t)firsts[i] == 0 && N > (size_t)firsts[i]) {
                e.R[0] = firsts[i];
@@ -93,12 +94,12 @@ static double now(void)
      return (double)ts.tv_sec + 1e-9 * (double)ts.tv_nsec;
 }
 
-struct pm { size_t N; int fwd; double *base, *in, *out; double best; lf_plan *bp; int s; int R[LF_MAXPASS]; };
+struct pm { size_t N; int fwd; double *base, *in, *out; double best; lf_plan *bp; int s, fuse; int R[LF_MAXPASS]; };
 
-static void try_plan(int s, const int *R, void *ctx)
+static void try_plan(int s, const int *R, int fuse, void *ctx)
 {
      struct pm *m = ctx;
-     lf_plan *p = lf_plan_radices(m->N, m->fwd, s, R, m->base);
+     lf_plan *p = lf_plan_radices(m->N, m->fwd, s, R, m->base, fuse);
      double t = 1e30;
      size_t reps = 1;
      if (!p) return;
@@ -117,7 +118,7 @@ static void try_plan(int s, const int *R, void *ctx)
      }
      if (t < m->best) {
           lf_destroy(m->bp);
-          m->bp = p; m->best = t; m->s = s;
+          m->bp = p; m->best = t; m->s = s; m->fuse = fuse;
           memcpy(m->R, R, (size_t)s * sizeof(int));
      } else lf_destroy(p);
 }

@@ -9,6 +9,7 @@ struct lf_plan {
      int fwd, s, vl;
      int R[LF_MAXPASS];
      lf_small_fn small;
+     lf_fused_fn fused;
      lf_first_fn first;
      lf_mid_fn mid[LF_MAXPASS];
      lf_last_fn last;
@@ -53,9 +54,19 @@ int lf_radices_vl(size_t N, int fwd, int s, const int *R)
      return 0;
 }
 
-lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base)
+int lf_fused_vl(size_t N, int fwd, int s, const int *R)
 {
-     int vl = lf_radices_vl(N, fwd, s, R);
+     static const int vls[] = { 8, 4 };
+     if (s != 2 || (size_t)R[0] * (size_t)R[1] != N) return 0;
+     for (int i = 0; i < 2; ++i)
+          if (R[0] % vls[i] == 0 && R[1] % vls[i] == 0 && lf_get_fused(R[0], R[1], vls[i], fwd))
+               return vls[i];
+     return 0;
+}
+
+lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base, int fuse)
+{
+     int vl = fuse ? lf_fused_vl(N, fwd, s, R) : lf_radices_vl(N, fwd, s, R);
      lf_plan *p;
      if (!vl) return 0;
      p = calloc(1, sizeof *p);
@@ -65,7 +76,8 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
           p->small = N == 1 ? 0 : lf_get_small((int)N, fwd);
           return p;
      }
-     p->first = lf_get_first(R[0], vl, fwd);
+     if (fuse) p->fused = lf_get_fused(R[0], R[1], vl, fwd);
+     else p->first = lf_get_first(R[0], vl, fwd);
      for (int t = 1; t < s - 1; ++t) p->mid[t] = lf_get_mid(R[t], vl, fwd);
      p->last = lf_get_last(R[s - 1], vl, fwd);
      {
@@ -86,7 +98,7 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
                ns *= Rt;
           }
      }
-     p->buf = aligned_alloc(64, 4 * N * sizeof(double));
+     if (!fuse) p->buf = aligned_alloc(64, 4 * N * sizeof(double));
      return p;
 }
 
@@ -100,6 +112,7 @@ void lf_execute(const lf_plan *p, const double *in, double *out)
           else { out[0] = in[0]; out[1] = in[1]; }
           return;
      }
+     if (p->fused) { p->fused(in, out, p->tw); return; }
      src = p->buf; dst = p->buf + 2 * N;
      p->first(in, src, src + N, N);
      ns = (size_t)p->R[0];

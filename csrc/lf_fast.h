@@ -15,7 +15,11 @@ int lf_radices_vl(size_t N, int fwd, int s, const int *R);
 /* Build a plan for the radix sequence. base[2m], base[2m+1] = re, im of omega_N^m (m < N),
    as computed by Lean (lfftw_fast_base_table); the pass tables are gathered from it.
    Returns NULL if unsupported. */
-lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base);
+lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base, int fuse);
+
+/* Vector length of the fused (in-register) two-pass kernel for R[0..1], or 0. With
+   fuse = 1, lf_plan_radices builds the fused variant. */
+int lf_fused_vl(size_t N, int fwd, int s, const int *R);
 
 /* Execute: in and out are interleaved arrays of N complex values; in == out allowed. */
 void lf_execute(const lf_plan *p, const double *in, double *out);

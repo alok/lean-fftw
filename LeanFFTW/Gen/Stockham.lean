@@ -36,130 +36,84 @@ open LeanFFTW
 
 /-! ## Butterflies -/
 
+/-- Input `r` of a butterfly: variables `2r, 2r+1`, times the twiddle (variables
+`2R + 2(r-1)`, `+1`) when `twiddled` and `r ≥ 1`. -/
+def bflyIn (R : Nat) (twiddled : Bool) (r : Nat) : SC :=
+  let xr : SC := .val (.input (2 * r)) (.input (2 * r + 1))
+  if twiddled && r ≥ 1 then
+    SC.mulGen (.val (.input (2 * R + 2 * (r - 1))) (.input (2 * R + 2 * (r - 1) + 1))) xr
+  else xr
+
+/-- The symbolic DFT of the butterfly inputs. -/
+def bflySym (fwd : Bool) (R : Nat) (twiddled : Bool) : Array SC :=
+  exec symOps (mkPlan symOps fwd (primeFactors R)) (bflyIn R twiddled)
+
 /-- The symbolic butterfly of a pass: inputs `x_r` (`r < R`, variables `2r, 2r+1`) and, when
 `twiddled`, twiddles `w_r` (`1 ≤ r < R`, variables `2R + 2(r-1)`, `+1`). Returns the `2R`
 output expressions `re y_0, im y_0, …`. -/
 def butterfly (fwd : Bool) (R : Nat) (twiddled : Bool) : Array SExpr :=
-  let x : Nat → SC := fun r =>
-    let xr : SC := .val (.input (2 * r)) (.input (2 * r + 1))
-    if twiddled && r ≥ 1 then
-      SC.mulGen (.val (.input (2 * R + 2 * (r - 1))) (.input (2 * R + 2 * (r - 1) + 1))) xr
-    else xr
-  let y := exec symOps (mkPlan symOps fwd (primeFactors R)) x
-  (Array.range R).foldl (fun acc k =>
-    let (re, im) := (symOps.get y k).parts; (acc.push re).push im) #[]
+  let y := bflySym fwd R twiddled
+  (Array.range (2 * R)).map fun i =>
+    if i % 2 = 0 then (symOps.get y (i / 2)).parts.1 else (symOps.get y (i / 2)).parts.2
 
 /-- Input variable names of generated code. -/
 def vName (i : Nat) : String := s!"v{i}"
 
-/-- The CSE'd SSA of a butterfly. -/
-def butterflySSA (fwd : Bool) (R : Nat) (twiddled : Bool) : SSA :=
-  toSSA vName (butterfly fwd R twiddled)
+/-- Number of inputs of a butterfly. -/
+def butterflyInputs (R : Nat) (twiddled : Bool) : Nat := if twiddled then 4 * R - 2 else 2 * R
 
-/-! ## Fast evaluation of SSA code in Lean `Float` -/
+/-- The CSE'd kernel of a butterfly. -/
+def butterflyK (fwd : Bool) (R : Nat) (twiddled : Bool) : Kernel :=
+  cse (butterflyInputs R twiddled) (butterfly fwd R twiddled)
 
-/-- SSA with operands resolved to slots: slots `0 … nIn-1` are the inputs, slot
-`nIn + i` is the result of instruction `i`. -/
-inductive IOp where
-  | cst (v : Float)
-  | add (a b : Nat)
-  | sub (a b : Nat)
-  | mul (a b : Nat)
-  | neg (a : Nat)
-  | fma (a b c : Nat)
-  | fms (a b c : Nat)
-  | fnma (a b c : Nat)
-  deriving Inhabited
+/-! ## Reference semantics (what the C engine must reproduce bit for bit)
 
-structure ISSA where
-  nIn : Nat
-  ops : Array IOp
-  outs : Array Nat
-  deriving Inhabited
+The passes are defined over any `Arith`, on interleaved data (`2N` scalars, real and
+imaginary parts alternating). Over `floatArith` with the binary64 twiddle tables this is
+the reference the C engine is tested against; over exact real arithmetic with exact
+twiddles it is the object of the correctness theorem (`LeanFFTW/Proof/Stockham.lean`). -/
 
-/-- Resolve names to slots (inputs are named `vName i`, `i < nIn`). -/
-def SSA.index (k : SSA) (nIn : Nat) : ISSA := Id.run do
-  let mut slot : Std.HashMap String Nat := {}
-  for i in [0:nIn] do
-    slot := slot.insert (vName i) i
-  let mut ops : Array IOp := #[]
-  for ins in k.code do
-    let s (v : String) : Nat := slot.getD v 0
-    let (d, op) : String × IOp := match ins with
-      | .cst d c => (d, .cst c.toFloat)
-      | .zero d => (d, .cst 0.0)
-      | .add d a b => (d, .add (s a) (s b))
-      | .sub d a b => (d, .sub (s a) (s b))
-      | .mul d a b => (d, .mul (s a) (s b))
-      | .neg d a => (d, .neg (s a))
-      | .fma d a b c => (d, .fma (s a) (s b) (s c))
-      | .fms d a b c => (d, .fms (s a) (s b) (s c))
-      | .fnma d a b c => (d, .fnma (s a) (s b) (s c))
-    slot := slot.insert d (nIn + ops.size)
-    ops := ops.push op
-  return ⟨nIn, ops, k.outs.map fun v => slot.getD v 0⟩
-
-/-- Binary64 evaluation; the operations are those of `SSA.evalF` / `SExpr.evalF`. -/
-def ISSA.eval (k : ISSA) (inp : FloatArray) : FloatArray := Id.run do
-  let mut env := inp
-  for op in k.ops do
-    let g (i : Nat) : Float := env[i]!
-    let v := match op with
-      | .cst v => v
-      | .add a b => g a + g b
-      | .sub a b => g a - g b
-      | .mul a b => g a * g b
-      | .neg a => -(g a)
-      | .fma a b c => Float.fma (g a) (g b) (g c)
-      | .fms a b c => Float.fma (g a) (g b) (-(g c))
-      | .fnma a b c => Float.fma (-(g a)) (g b) (g c)
-    env := env.push v
-  let mut out := FloatArray.emptyWithCapacity k.outs.size
-  for o in k.outs do
-    out := out.push env[o]!
-  return out
-
-/-! ## Reference semantics in Lean `Float` (what the C engine must reproduce bit for bit) -/
-
-/-- One Stockham pass on split arrays (`re`, `im` of length `N`). `tw` is the pass's
-twiddle table (`passTwiddles`), or `none` for an untwiddled pass. -/
-def refPass (k : ISSA) (R ns N : Nat) (tw : Option FloatArray) (re im : FloatArray) :
-    FloatArray × FloatArray := Id.run do
+/-- The inputs of butterfly `j` of a pass: the `R` complex inputs `z[j + r·N/R]`, then (if
+`tw` is given) the twiddles `w_r`, `1 ≤ r < R`, of `k = j mod ns`. -/
+def bflyInputs {α : Type} [Inhabited α] (R ns N : Nat) (tw : Option (Array α)) (z : Array α)
+    (j : Nat) : Array α :=
   let NR := N / R
-  let mut ore := FloatArray.mk (Array.replicate N 0.0)
-  let mut oim := FloatArray.mk (Array.replicate N 0.0)
-  for j in [0:NR] do
-    let kk := j % ns
-    let b := j / ns
-    let mut inp := FloatArray.emptyWithCapacity (4 * R)
-    for r in [0:R] do
-      inp := (inp.push re[j + r * NR]!).push im[j + r * NR]!
-    if let some t := tw then
-      for r in [1:R] do
-        inp := (inp.push t[2 * (r - 1) * ns + kk]!).push t[(2 * (r - 1) + 1) * ns + kk]!
-    let y := k.eval inp
-    for r in [0:R] do
-      ore := ore.set! (b * ns * R + kk + r * ns) y[2 * r]!
-      oim := oim.set! (b * ns * R + kk + r * ns) y[2 * r + 1]!
-  return (ore, oim)
+  let kk := j % ns
+  let xs := (List.range R).foldl (fun acc r =>
+    (acc.push (z.getD (2 * (j + r * NR)) default)).push (z.getD (2 * (j + r * NR) + 1) default)) #[]
+  match tw with
+  | none => xs
+  | some t => (List.range (R - 1)).foldl (fun acc r =>
+      (acc.push (t.getD (2 * r * ns + kk) default)).push (t.getD ((2 * r + 1) * ns + kk) default)) xs
 
-/-- The reference transform of a fast plan on interleaved data. A single radix (`s = 1`,
-the small codelets) is one untwiddled pass with `ns = 1`. -/
+/-- One Stockham pass: output `c = b·ns·R + k + r·ns` (`k < ns`, `r < R`) is output `r` of
+butterfly `j = b·ns + k`. -/
+def passWith {α : Type} [Inhabited α] (A : Arith α) (k : Kernel) (R ns N : Nat)
+    (tw : Option (Array α)) (z : Array α) : Array α :=
+  let bfs : Array (Array α) := (Array.range (N / R)).map fun j => k.eval A (bflyInputs R ns N tw z j)
+  (Array.range (2 * N)).map fun i =>
+    let c := i / 2
+    let kk := c % ns
+    let r := (c / ns) % R
+    let b := c / (ns * R)
+    (bfs.getD (b * ns + kk) #[]).getD (2 * r + i % 2) default
+
+/-- All passes of the plan `rs`; `twOf t` is the twiddle table of pass `t ≥ 1`. -/
+def stockhamWith {α : Type} [Inhabited α] (A : Arith α) (fwd : Bool) (N : Nat) (rs : Array Nat)
+    (twOf : Nat → Array α) (z : Array α) : Array α := Id.run do
+  let mut z := z
+  for t in [0:rs.size] do
+    let R := rs.getD t 1
+    let ns := passNs rs t
+    z := passWith A (butterflyK fwd R (t ≥ 1)) R ns N (if t ≥ 1 then some (twOf t) else none) z
+  return z
+
+/-- The binary64 reference transform of a fast plan on interleaved data. A single radix
+(`s = 1`, the small codelets) is one untwiddled pass with `ns = 1`. -/
 def refTransform (fwd : Bool) (N : Nat) (rs : Array Nat) (inp : FloatArray) : FloatArray :=
-  Id.run do
-    let tab := Trig.cosSin2PiTable N
-    let mut re := FloatArray.mk ((Array.range N).map fun i => inp[2 * i]!)
-    let mut im := FloatArray.mk ((Array.range N).map fun i => inp[2 * i + 1]!)
-    for t in [0:rs.size] do
-      let R := rs.getD t 1
-      let ns := passNs rs t
-      let k := (butterflySSA fwd R (t ≥ 1)).index (if t ≥ 1 then 4 * R - 2 else 2 * R)
-      let tw := if t ≥ 1 then some (passTwiddles tab fwd N R ns) else none
-      (re, im) := refPass k R ns N tw re im
-    let mut out := FloatArray.emptyWithCapacity (2 * N)
-    for i in [0:N] do
-      out := (out.push re[i]!).push im[i]!
-    return out
+  let tab := Trig.cosSin2PiTable N
+  let twOf (t : Nat) : Array Float := (passTwiddles tab fwd N (rs.getD t 1) (passNs rs t)).data
+  ⟨stockhamWith floatArith fwd N rs twOf inp.data⟩
 
 /-- C entry point for differential tests: `spec = [N, fwd, s, R₀, …]`. -/
 @[export lfftw_fast_reference]
@@ -175,10 +129,6 @@ def firstName (R vl : Nat) (fwd : Bool) : String := s!"lf_first_r{R}_v{vl}_{dirT
 def midName (R vl : Nat) (fwd : Bool) : String := s!"lf_mid_r{R}_v{vl}_{dirTag fwd}"
 def lastName (R vl : Nat) (fwd : Bool) : String := s!"lf_last_r{R}_v{vl}_{dirTag fwd}"
 def smallName (N : Nat) (fwd : Bool) : String := s!"lf_small_n{N}_{dirTag fwd}"
-
-/-- Body lines of SSA code. -/
-def SSA.bodyLines (k : SSA) (t : Target) (ind : String) : List String :=
-  k.code.toList.map fun i => ind ++ i.toC t
 
 def joinLines (ls : List String) : String := String.join (ls.map (· ++ "\n"))
 
@@ -256,7 +206,7 @@ def emitFirst (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let ty := t.ty
   let p := t.pre
-  let k := butterflySSA fwd R false
+  let k := (butterflyK fwd R false).inst t "    " "" vName
   let mut ls : List String := [
     s!"static void {firstName R vl fwd}(const double *restrict in, double *restrict ore, double *restrict oim, size_t N) \{",
     s!"  const size_t NR = N / {R};",
@@ -267,7 +217,7 @@ def emitFirst (R vl : Nat) (fwd : Bool) : String := Id.run do
       s!"    const {ty} lb{r} = {p}_loadu_pd(in + 2 * (j + {r} * NR) + {vl});",
       s!"    const {ty} {vName (2 * r)} = lf{vl}_dre(la{r}, lb{r});",
       s!"    const {ty} {vName (2 * r + 1)} = lf{vl}_dim(la{r}, lb{r});"]
-  ls := ls ++ k.bodyLines t "    "
+  ls := ls ++ k.lines
   for (part, base) in [(0, "ore"), (1, "oim")] do
     for c in [0:R / vl] do
       let rows := (Array.range vl).map fun i => k.outs[2 * (c * vl + i) + part]!
@@ -295,7 +245,7 @@ def twiddledLoads (R vl : Nat) : List String := Id.run do
 /-- Middle pass: split → split, twiddled. Requires `VL ∣ ns`. -/
 def emitMid (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
-  let k := butterflySSA fwd R true
+  let k := (butterflyK fwd R true).inst t "      " "" vName
   let mut ls : List String := [
     s!"static void {midName R vl fwd}(const double *restrict ire, const double *restrict iim, double *restrict ore, double *restrict oim, const double *restrict tw, size_t N, size_t ns) \{",
     s!"  const size_t NR = N / {R};",
@@ -304,7 +254,7 @@ def emitMid (R vl : Nat) (fwd : Bool) : String := Id.run do
     "      const size_t j = b + k;",
     s!"      const size_t o = b * {R} + k;"]
   ls := ls ++ twiddledLoads R vl
-  ls := ls ++ k.bodyLines t "      "
+  ls := ls ++ k.lines
   for r in [0:R] do
     ls := ls ++ [
       s!"      {t.pre}_storeu_pd(ore + o + {r} * ns, {k.outs[2 * r]!});",
@@ -315,7 +265,7 @@ def emitMid (R vl : Nat) (fwd : Bool) : String := Id.run do
 /-- Last pass: split → interleaved `out`, twiddled. Requires `VL ∣ ns`. -/
 def emitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
-  let k := butterflySSA fwd R true
+  let k := (butterflyK fwd R true).inst t "      " "" vName
   let mut ls : List String := [
     s!"static void {lastName R vl fwd}(const double *restrict ire, const double *restrict iim, double *restrict out, const double *restrict tw, size_t N, size_t ns) \{",
     s!"  const size_t NR = N / {R};",
@@ -324,7 +274,7 @@ def emitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
     "      const size_t j = b + k;",
     s!"      const size_t o = b * {R} + k;"]
   ls := ls ++ twiddledLoads R vl
-  ls := ls ++ k.bodyLines t "      "
+  ls := ls ++ k.lines
   for r in [0:R] do
     ls := ls ++ [
       s!"      {t.pre}_storeu_pd(out + 2 * (o + {r} * ns), lf{vl}_ilo({k.outs[2 * r]!}, {k.outs[2 * r + 1]!}));",
@@ -335,14 +285,69 @@ def emitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
 /-- A whole small transform (one untwiddled butterfly, scalar), interleaved → interleaved.
 All inputs are read before any output is written, so `in == out` is allowed. -/
 def emitSmall (N : Nat) (fwd : Bool) : String := Id.run do
-  let k := butterflySSA fwd N false
+  let k := (butterflyK fwd N false).inst .scalar "  " "" vName
   let mut ls : List String := [
     s!"static void {smallName N fwd}(const double *in, double *out) \{"]
   for i in [0:2 * N] do
     ls := ls ++ [s!"  const double {vName i} = in[{i}];"]
-  ls := ls ++ k.bodyLines .scalar "  "
+  ls := ls ++ k.lines
   for i in [0:2 * N] do
     ls := ls ++ [s!"  out[{i}] = {k.outs[i]!};"]
+  ls := ls ++ ["}", ""]
+  return joinLines ls
+
+def fusedName (R1 R2 vl : Nat) (fwd : Bool) : String := s!"lf_fused_{R1}x{R2}_v{vl}_{dirTag fwd}"
+
+/-- A whole transform of size `N = R1·R2` in registers: the first pass, the `VL × VL`
+transposes, and the last pass of the plan `[R1, R2]`, with the intermediate array never
+stored. It computes exactly the operations of `refTransform fwd N #[R1, R2]`.
+Requires `VL ∣ R1` and `VL ∣ R2`. All inputs are loaded before any output is stored, and
+the pointers are not `restrict`, so `in == out` is allowed. -/
+def emitFused (R1 R2 vl : Nat) (fwd : Bool) : String := Id.run do
+  let t := targetOf vl
+  let ty := t.ty
+  let p := t.pre
+  let k1 := butterflyK fwd R1 false
+  let k2 := butterflyK fwd R2 true
+  let mut ls : List String :=
+    [s!"static void {fusedName R1 R2 vl fwd}(const double *in, double *out, const double *restrict tw) \{"]
+  -- pass 1: lanes are `j = jb·VL + l`
+  let mut y : Array (Array String) := #[]
+  for jb in [0:R2 / vl] do
+    for r in [0:R1] do
+      let base := 2 * (jb * vl + r * R2)
+      ls := ls ++ [
+        s!"  const {ty} la{jb}_{r} = {p}_loadu_pd(in + {base});",
+        s!"  const {ty} lb{jb}_{r} = {p}_loadu_pd(in + {base + vl});",
+        s!"  const {ty} x{jb}_{2 * r} = lf{vl}_dre(la{jb}_{r}, lb{jb}_{r});",
+        s!"  const {ty} x{jb}_{2 * r + 1} = lf{vl}_dim(la{jb}_{r}, lb{jb}_{r});"]
+    let inst := k1.inst t "  " s!"p{jb}_" (fun i => s!"x{jb}_{i}")
+    ls := ls ++ inst.lines
+    y := y.push inst.outs
+  -- transposes: pass-2 input `r2` of lane block `kb` is column `r2` of rows `kb·VL + i`
+  let mut X : Array (Array String) := Array.replicate (R1 / vl) (Array.replicate (2 * R2) "")
+  for part in [0:2] do
+    for kb in [0:R1 / vl] do
+      for jb in [0:R2 / vl] do
+        let rows := (Array.range vl).map fun i => (y[jb]!)[2 * (kb * vl + i) + part]!
+        let (decls, cols) := transposeC t s!"c{part}_{kb}_{jb}" rows
+        ls := ls ++ decls
+        for l in [0:vl] do
+          X := X.set! kb ((X[kb]!).set! (2 * (jb * vl + l) + part) cols[l]!)
+  -- pass 2: lanes are `k = kb·VL + l`, `ns = R1`
+  for kb in [0:R1 / vl] do
+    for r in [1:R2] do
+      ls := ls ++ [
+        s!"  const {ty} w{kb}_{2 * (r - 1)} = {p}_loadu_pd(tw + {2 * (r - 1) * R1 + kb * vl});",
+        s!"  const {ty} w{kb}_{2 * (r - 1) + 1} = {p}_loadu_pd(tw + {(2 * (r - 1) + 1) * R1 + kb * vl});"]
+    let bind (i : Nat) : String := if i < 2 * R2 then (X[kb]!)[i]! else s!"w{kb}_{i - 2 * R2}"
+    let inst := k2.inst t "  " s!"q{kb}_" bind
+    ls := ls ++ inst.lines
+    for r in [0:R2] do
+      let o := 2 * (kb * vl + r * R1)
+      ls := ls ++ [
+        s!"  {p}_storeu_pd(out + {o}, lf{vl}_ilo({inst.outs[2 * r]!}, {inst.outs[2 * r + 1]!}));",
+        s!"  {p}_storeu_pd(out + {o + vl}, lf{vl}_ihi({inst.outs[2 * r]!}, {inst.outs[2 * r + 1]!}));"]
   ls := ls ++ ["}", ""]
   return joinLines ls
 
@@ -354,11 +359,15 @@ structure KernelSet where
   mid : List (Nat × Nat)
   /-- sizes of the scalar small transforms -/
   small : List Nat
+  /-- `(R1, R2, VL)` of fused two-pass transforms -/
+  fused : List (Nat × Nat × Nat) := []
 
 def KernelSet.default : KernelSet where
   first := [(4, 4), (8, 4), (16, 4), (8, 8), (16, 8), (32, 8)]
   mid := [(2, 4), (4, 4), (8, 4), (2, 8), (4, 8), (8, 8), (16, 8), (32, 8)]
   small := [2, 4, 8]
+  fused := [(4, 4, 4), (4, 8, 4), (8, 4, 4), (8, 8, 4), (8, 8, 8), (8, 16, 8), (16, 8, 8),
+    (16, 16, 8), (8, 32, 8), (32, 8, 8), (16, 32, 8), (32, 16, 8)]
 
 /-- The whole generated C translation unit: kernels plus lookup functions. -/
 def emitKernels (ks : KernelSet := .default) : String := Id.run do
@@ -368,6 +377,7 @@ def emitKernels (ks : KernelSet := .default) : String := Id.run do
     for (R, vl) in ks.first do s := s ++ emitFirst R vl fwd
     for (R, vl) in ks.mid do s := s ++ emitMid R vl fwd ++ emitLast R vl fwd
     for N in ks.small do s := s ++ emitSmall N fwd
+    for (R1, R2, vl) in ks.fused do s := s ++ emitFused R1 R2 vl fwd
   s := s ++ "#include \"lf_kernels.h\"\n\n"
   let look (ty fn : String) (xs : List (Nat × Nat)) (nm : Nat → Nat → Bool → String) : String :=
     joinLines ([s!"{ty} {fn}(int R, int vl, int fwd) \{"] ++
@@ -377,6 +387,10 @@ def emitKernels (ks : KernelSet := .default) : String := Id.run do
   s := s ++ look "lf_first_fn" "lf_get_first" ks.first firstName
   s := s ++ look "lf_mid_fn" "lf_get_mid" ks.mid midName
   s := s ++ look "lf_last_fn" "lf_get_last" ks.mid lastName
+  s := s ++ joinLines (["lf_fused_fn lf_get_fused(int R1, int R2, int vl, int fwd) {"] ++
+      (dirs.flatMap fun fwd => ks.fused.map fun (R1, R2, vl) =>
+        s!"  if (R1 == {R1} && R2 == {R2} && vl == {vl} && fwd == {if fwd then 1 else 0}) return {fusedName R1 R2 vl fwd};") ++
+      ["  return 0;", "}", ""])
   s := s ++ joinLines (["lf_small_fn lf_get_small(int N, int fwd) {"] ++
       (dirs.flatMap fun fwd => ks.small.map fun N =>
         s!"  if (N == {N} && fwd == {if fwd then 1 else 0}) return {smallName N fwd};") ++
