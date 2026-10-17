@@ -15,7 +15,8 @@ symbolic inputs, the straight-line code of a kernel.
 Multiplication by a twiddle constant is canonicalized: the angle is reduced to a quarter
 turn `i^q` (exact component swaps and negations) times a rotation by `β ∈ [0, π/2)`;
 `β = 0` costs nothing, `β = π/4` costs two multiplications, and other angles cost two
-multiplications and two fused multiply-adds.
+fused multiply-adds and two multiplications by `cos β`, which FMA contraction folds into
+the butterfly additions that follow.
 -/
 
 namespace LeanFFTW.Gen
@@ -50,14 +51,16 @@ def rotQ (k n : Nat) (a b : SExpr) : SExpr × SExpr :=
     -- (a + ib)(1 + i)/√2 = ((a - b) + i(a + b)) · √2/2
     (mkMulC .sqrthalf (mkSub a b), mkMulC .sqrthalf (mkAdd a b))
   else
-    -- (a + ib)(c + is) = (ac - bs) + i(as + bc); use the octant to keep 0 < θ ≤ π/4
+    -- (a + ib)(c + is) = c·(a - tb) + i·c·(b + ta), t = s/c = tan θ: one fused operation
+    -- per part, and the product by c fuses into the additions that consume the result
+    -- (`SExpr.contract`). Use the octant to keep 0 < θ < π/4, so 0 < t < 1.
     if 8 * k < n then
-      (mkFmaSub (.cos k n) a (.sin k n) b, mkFmaAdd (.cos k n) b (.sin k n) a)
+      (mkMulC (.cos k n) (mkFnmaC (.tan k n) b a), mkMulC (.cos k n) (mkFmaC (.tan k n) a b))
     else
-      -- θ = π/2 - φ, φ = 2π(n/4 - k)/n: cos θ = sin φ, sin θ = cos φ
+      -- θ = π/2 - φ, φ = 2π(n/4 - k)/n: (a + ib)(s' + ic') = c'·(t'a - b) + i·c'·(a + t'b)
       let k' := n - 4 * k  -- φ = 2π k' / (4n)
-      (mkFmaSub (.sin k' (4 * n)) a (.cos k' (4 * n)) b,
-       mkFmaAdd (.sin k' (4 * n)) b (.cos k' (4 * n)) a)
+      (mkMulC (.cos k' (4 * n)) (mkFmsC (.tan k' (4 * n)) a b),
+       mkMulC (.cos k' (4 * n)) (mkFmaC (.tan k' (4 * n)) b a))
 
 /-- Multiply `a + ib` by `exp(± 2πi k/n)` (`-` when `fwd`), `n > 0`. -/
 def rot (fwd : Bool) (n k : Nat) (a b : SExpr) : SExpr × SExpr :=

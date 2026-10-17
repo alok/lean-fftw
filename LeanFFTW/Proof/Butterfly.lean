@@ -28,6 +28,7 @@ noncomputable def Cst.toReal : Cst → ℝ
   | .cos k n => Real.cos (2 * Real.pi * k / n)
   | .sin k n => Real.sin (2 * Real.pi * k / n)
   | .sqrthalf => Real.sqrt 2 / 2
+  | .tan k n => Real.tan (2 * Real.pi * k / n)
 
 /-- Exact real arithmetic. -/
 noncomputable def realArith : Arith ℝ where
@@ -92,6 +93,18 @@ theorem ev_mkFmaSub (c1 : Cst) (a : SExpr) (c2 : Cst) (b : SExpr) :
     ev env (mkFmaSub c1 a c2 b) = c1.toReal * ev env a - c2.toReal * ev env b := by
   unfold mkFmaSub; split <;> simp [ev_mkMulC, ev_mkNeg]
 
+open SExpr in
+theorem ev_mkFnmaC (t : Cst) (b a : SExpr) : ev env (mkFnmaC t b a) = ev env a - t.toReal * ev env b := by
+  unfold mkFnmaC; split <;> simp
+
+open SExpr in
+theorem ev_mkFmaC (t : Cst) (a b : SExpr) : ev env (mkFmaC t a b) = t.toReal * ev env a + ev env b := by
+  unfold mkFmaC; split <;> simp
+
+open SExpr in
+theorem ev_mkFmsC (t : Cst) (a b : SExpr) : ev env (mkFmsC t a b) = t.toReal * ev env a - ev env b := by
+  unfold mkFmsC; split <;> simp [ev_mkNeg]
+
 /-- The complex number denoted by a pair of expressions. -/
 noncomputable def evC (p : SExpr × SExpr) : ℂ := ⟨ev env p.1, ev env p.2⟩
 
@@ -125,6 +138,17 @@ theorem twiddle_pow (fwd : Bool) (n k q : ℕ) : twiddle fwd n k ^ q = twiddle f
 theorem I_pow_mod (q : ℕ) : I ^ q = I ^ (q % 4) := by
   conv_lhs => rw [← Nat.div_add_mod q 4, pow_add, pow_mul, Complex.I_pow_four, one_pow, one_mul]
 
+theorem cos_two_pi_div_pos {k n : ℕ} (hn : 0 < n) (hk : 4 * k < n) :
+    0 < Real.cos (2 * Real.pi * k / n) := by
+  have hn' : (0 : ℝ) < n := by exact_mod_cast hn
+  have hk' : (4 * k : ℝ) < n := by exact_mod_cast hk
+  apply Real.cos_pos_of_mem_Ioo
+  constructor
+  · have : 0 ≤ 2 * Real.pi * k / n := by positivity
+    linarith [Real.pi_pos]
+  · rw [div_lt_iff₀ hn']
+    nlinarith [Real.pi_pos]
+
 /-- Rotation by `θ = 2πk/n ∈ [0, π/2)`. -/
 theorem evC_rotQ (k n : ℕ) (hn : 0 < n) (hk : 4 * k < n) (a b : SExpr) :
     evC env (SC.rotQ k n a b) = evC env (a, b) * twiddle false n k := by
@@ -147,15 +171,23 @@ theorem evC_rotQ (k n : ℕ) (hn : 0 < n) (hk : 4 * k < n) (a b : SExpr) :
     rw [hθ, Real.cos_pi_div_four, Real.sin_pi_div_four]
     apply Complex.ext <;> simp [evC, ev_mkMulC, ev_mkSub, ev_mkAdd, Cst.toReal] <;> ring
   split
-  · apply Complex.ext <;> simp [evC, ev_mkFmaSub, ev_mkFmaAdd, Cst.toReal] <;> ring
+  · have ht := Real.tan_mul_cos (cos_two_pi_div_pos hn hk).ne'
+    apply Complex.ext <;> simp only [evC, ev_mkMulC, ev_mkFnmaC, ev_mkFmaC, Cst.toReal]
+    · linear_combination (-ev env b) * ht
+    · linear_combination (ev env a) * ht
   · have hle : 4 * k ≤ n := by omega
     have hθ : 2 * Real.pi * ((n - 4 * k : ℕ) : ℝ) / ((4 * n : ℕ) : ℝ) =
         Real.pi / 2 - 2 * Real.pi * k / n := by
       push_cast [Nat.cast_sub hle]
       field_simp; ring
+    have ht := Real.tan_mul_cos (cos_two_pi_div_pos (k := n - 4 * k) (n := 4 * n)
+      (by omega) (by omega)).ne'
+    rw [hθ, Real.cos_pi_div_two_sub, Real.sin_pi_div_two_sub] at ht
     apply Complex.ext <;>
-      simp only [evC, ev_mkFmaSub, ev_mkFmaAdd, Cst.toReal, hθ, Real.sin_pi_div_two_sub,
-        Real.cos_pi_div_two_sub] <;> ring
+      simp only [evC, ev_mkMulC, ev_mkFmsC, ev_mkFmaC, Cst.toReal, hθ,
+        Real.cos_pi_div_two_sub]
+    · linear_combination (ev env a) * ht
+    · linear_combination (ev env b) * ht
 
 theorem evC_mulIPow (q : ℕ) (re im : SExpr) :
     evC env (SC.mulIPow q re im) = evC env (re, im) * I ^ q := by
@@ -225,14 +257,26 @@ theorem il_mkFmaSub (c1 c2 : Cst) {a b : SExpr} (ha : a.InputsLt m) (hb : b.Inpu
     (mkFmaSub c1 a c2 b).InputsLt m := by
   unfold mkFmaSub; split <;> simp_all [SExpr.InputsLt, il_mkMulC, il_mkNeg]
 
+theorem il_mkFnmaC (t : Cst) {a b : SExpr} (hb : b.InputsLt m) (ha : a.InputsLt m) :
+    (mkFnmaC t b a).InputsLt m := by
+  unfold mkFnmaC; split <;> simp_all [SExpr.InputsLt]
+
+theorem il_mkFmaC (t : Cst) {a b : SExpr} (ha : a.InputsLt m) (hb : b.InputsLt m) :
+    (mkFmaC t a b).InputsLt m := by
+  unfold mkFmaC; split <;> simp_all [SExpr.InputsLt]
+
+theorem il_mkFmsC (t : Cst) {a b : SExpr} (ha : a.InputsLt m) (hb : b.InputsLt m) :
+    (mkFmsC t a b).InputsLt m := by
+  unfold mkFmsC; split <;> simp_all [SExpr.InputsLt, il_mkNeg]
+
 theorem il_rotQ (k n : ℕ) {a b : SExpr} (ha : a.InputsLt m) (hb : b.InputsLt m) :
     (SC.rotQ k n a b).1.InputsLt m ∧ (SC.rotQ k n a b).2.InputsLt m := by
   unfold SC.rotQ
   split; · exact ⟨ha, hb⟩
   split; · exact ⟨il_mkMulC _ (il_mkSub ha hb), il_mkMulC _ (il_mkAdd ha hb)⟩
   split
-  · exact ⟨il_mkFmaSub _ _ ha hb, il_mkFmaAdd _ _ hb ha⟩
-  · exact ⟨il_mkFmaSub _ _ ha hb, il_mkFmaAdd _ _ hb ha⟩
+  · exact ⟨il_mkMulC _ (il_mkFnmaC _ hb ha), il_mkMulC _ (il_mkFmaC _ ha hb)⟩
+  · exact ⟨il_mkMulC _ (il_mkFmsC _ ha hb), il_mkMulC _ (il_mkFmaC _ hb ha)⟩
 
 theorem il_mulIPow (q : ℕ) {a b : SExpr} (ha : a.InputsLt m) (hb : b.InputsLt m) :
     (SC.mulIPow q a b).1.InputsLt m ∧ (SC.mulIPow q a b).2.InputsLt m := by

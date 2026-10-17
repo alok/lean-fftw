@@ -85,6 +85,12 @@ def fixedToFloat (v : Nat) : Float :=
   let frac := q'' - 2 ^ 52
   Float.ofBits (UInt64.ofNat ((e.toNat <<< 52) ||| frac))
 
+/-- `tan (2π · num / den)` as binary64, `num/den ∈ [0, 1/8]`: the fixed-point quotient of the
+sine and cosine series, rounded once. -/
+def tan2Pi (num den : Nat) : Float :=
+  let (c, s) := cosSinFixed (angleFixed num den)
+  fixedToFloat (s * 2 ^ precBits / c)
+
 /-- Negation that never produces `-0.0` (keeps twiddle zeros positive). -/
 @[inline] def negZ (x : Float) : Float := if x == 0.0 then 0.0 else -x
 

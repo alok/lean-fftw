@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2026 Lean FFTW contributors. Released under MIT license.
 -/
-import LeanFFTW.Core.FloatOps
+import LeanFFTW.Core.FastExec
 
 /-!
 # FFTW problems on strided buffers (generic engine)
@@ -141,12 +141,12 @@ def hermExt (n : Nat) (h : Nat → FC) (k : Nat) : FC :=
 imaginary parts. -/
 def LineOp.apply (op : LineOp) (x : Nat → FC) : CArr :=
   match op with
-  | .cdft p => exec floatOps p x
+  | .cdft p => execFloat p x
   | .r2c n p =>
-      let F := exec floatOps p (fun j => ⟨(x j).re, 0.0⟩)
+      let F := execFloat p (fun j => ⟨(x j).re, 0.0⟩)
       CArr.ofFn (n / 2 + 1) F.get
   | .c2r n p =>
-      let G := exec floatOps p (hermExt n x)
+      let G := execFloat p (hermExt n x)
       CArr.ofFn n fun j => ⟨(G.get j).re, 0.0⟩
   | .r2r k n p =>
       match k with
@@ -154,12 +154,12 @@ def LineOp.apply (op : LineOp) (x : Nat → FC) : CArr :=
           -- halfcomplex input: r_k at k (k ≤ n/2), i_k at n-k (0 < k < n-k)
           let hc : Nat → FC := fun j =>
             ⟨(x j).re, if 0 < j ∧ j < n - j then (x (n - j)).re else 0.0⟩
-          let G := exec floatOps p (hermExt n hc)
+          let G := execFloat p (hermExt n hc)
           CArr.ofFn n fun j => ⟨(G.get j).re, 0.0⟩
       | _ =>
           let M := k.embedSize n
           let z := CArr.ofFn M fun i => ⟨k.embed n (fun j => (x j).re) i, 0.0⟩
-          let F := exec floatOps p z.get
+          let F := execFloat p z.get
           CArr.ofFn n fun j => ⟨k.extract n F.get j, 0.0⟩
 
 /-- Row-major product of sizes. -/

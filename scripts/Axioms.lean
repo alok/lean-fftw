@@ -23,3 +23,4 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.stockhamWith_float_error_dft
 #print axioms LeanFFTW.Gen.refTransform_error
 #print axioms LeanFFTW.Gen.refTransform_error_depth
+#print axioms LeanFFTW.execFloat_eq_fast

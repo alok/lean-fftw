@@ -16,8 +16,9 @@ It has two semantics:
   single rounding). The emitted C code performs exactly these operations, operand for
   operand, so `evalF` is the reference the C kernels are tested against bit for bit.
 
-Constants are `cos (2πk/n)` and `sin (2πk/n)` with `0 < k/n < 1/4`, whose binary64
-values come from the exact integer trigonometry of `Trig.lean`.
+Constants are `cos (2πk/n)` and `sin (2πk/n)` with `0 < k/n < 1/4`, `√2/2`, and
+`tan (2πk/n)` with `0 < k/n < 1/8`, whose binary64 values come from the exact integer
+trigonometry of `Trig.lean`.
 -/
 
 namespace LeanFFTW.Gen
@@ -30,6 +31,8 @@ inductive Cst where
   | sin (k n : Nat)
   /-- `√2/2 = cos(π/4)` -/
   | sqrthalf
+  /-- `tan (2πk/n)`, used with `0 < k/n < 1/8` -/
+  | tan (k n : Nat)
   deriving DecidableEq, Hashable, Repr, Inhabited
 
 namespace Cst
@@ -39,6 +42,7 @@ def toFloat : Cst → Float
   | .cos k n => (Trig.cosSin2Pi k n).1
   | .sin k n => (Trig.cosSin2Pi k n).2
   | .sqrthalf => (Trig.cosSin2Pi 1 8).1
+  | .tan k n => Trig.tan2Pi k n
 
 /-- A C literal that denotes exactly the binary64 value (hexadecimal float). -/
 def cLiteral (c : Cst) : String :=
@@ -128,6 +132,24 @@ def mkFmaSub (c1 : Cst) (a : SExpr) (c2 : Cst) (b : SExpr) : SExpr :=
   | .zero, _ => mkNeg (mkMulC c2 b)
   | _, .zero => mkMulC c1 a
   | _, _ => .fms (.cst c1) a (mkMulC c2 b)
+
+/-- `a - t*b` for a constant `t`. -/
+def mkFnmaC (t : Cst) (b a : SExpr) : SExpr :=
+  match b with
+  | .zero => a
+  | _ => .fnma (.cst t) b a
+
+/-- `t*a + b` for a constant `t`. -/
+def mkFmaC (t : Cst) (a b : SExpr) : SExpr :=
+  match a with
+  | .zero => b
+  | _ => .fma (.cst t) a b
+
+/-- `t*a - b` for a constant `t`. -/
+def mkFmsC (t : Cst) (a b : SExpr) : SExpr :=
+  match a with
+  | .zero => mkNeg b
+  | _ => .fms (.cst t) a b
 
 /-- `a + b`, contracted to a fused multiply-add when an operand is a product. -/
 def contractAdd : SExpr → SExpr → SExpr
