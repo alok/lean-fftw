@@ -22,6 +22,7 @@ LABELS = {
     "lean-i3": "i3  interleaved-complex kernels for small N",
     "lean-i4": "i4  measuring planner, cache blocking",
     "lean-i5": "i5  two-pass interleaved kernels, better vectorizer",
+    "lean-i6": "i6  direct kernel dispatch, planning on the real arrays",
 }
 FFTW = ["fftw-measure", "fftw-patient", "fftw-exhaustive"]
 W, H = 960, 640
