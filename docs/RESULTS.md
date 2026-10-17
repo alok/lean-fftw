@@ -100,8 +100,9 @@ implementations.
 * Differential test, bit for bit against the Lean reference `refTransform`
   (`csrc/test_fast.c`, `test_fast 14 18`): 3,726 plans, 0 mismatches.
 * libbench2 `--verify` for `ocf`, `icf`, `ocb`, `icb` at N = 1…2^18: 76 of 76 pass.
-* FFTW's `check.pl` (random problems over the guru interface): 434 of 434 pass. For the
-  bigcheck enumeration, see [FFTW_INVENTORY.md](FFTW_INVENTORY.md).
+* FFTW's `check.pl` (random problems over the guru interface): 434 of 434 pass.
+* FFTW's bigcheck enumeration (`check.pl -a`), on the final library: 50,702 of 50,702
+  problems pass `--verify`, and all 30 problems that must be rejected are rejected.
 
 The library after the benchmark differs from i6 only in the generic engine. Bigcheck
 found that empty vector dimensions (`n = 0`) were rejected, and FFTW accepts them as empty

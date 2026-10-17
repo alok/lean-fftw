@@ -20,7 +20,8 @@ source of the test harness; Lean FFTW never links or calls it.
   FFTW's at every size.
 * **Tests.** FFTW's own harness (libbench2 `--verify` driven by `tests/check.pl`) passes
   over FFTW's double-precision guru surface: complex, r2c/c2r and all 11 r2r kinds, any
-  rank, vector rank and strides, in and out of place, split or interleaved. See
+  rank, vector rank and strides, in and out of place, split or interleaved. That covers
+  all 50,702 problems of FFTW's exhaustive bigcheck enumeration (`check.pl -a`). See
   [docs/FFTW_INVENTORY.md](docs/FFTW_INVENTORY.md) for everything FFTW has and what is not
   covered (other precisions, threads, MPI, wisdom, the `fftw3.h` C API).
 * **Proofs.** No `sorry`, no new axioms ([scripts/Axioms.lean](scripts/Axioms.lean)):

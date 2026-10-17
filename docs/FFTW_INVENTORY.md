@@ -44,7 +44,7 @@ exposed by the guru interface**, exercised through libbench2 (the harness FFTW's
 | Test | What it checks | Applicable | Result |
 |---|---|---|---|
 | `tests/check.pl` (`make check`: `-r -c=30 -v`) | random problems over the whole guru space, libbench2 `--verify` (linearity, impulse, time-shift tests) | yes | **pass**: 434 problems, 0 failures (`results/checklocal-generic.log`, seed `srand(1)`) |
-| `check.pl -a` (bigcheck) | exhaustive enumeration of problem shapes | yes | enumerated: 50,702 doable + 30 must-be-undoable problems (seed 20261016); full run pending |
+| `check.pl -a` (bigcheck) | exhaustive enumeration of problem shapes | yes | **pass**: 50,702 of 50,702 doable problems verify and all 30 must-be-undoable problems are rejected (seed 20261016; `tools/bigcheck.py`, `results/bigcheck/`). The first attempt found that empty vector dimensions (`n = 0`) were rejected; FFTW accepts them, and the generic planner was fixed before the run that is reported |
 | `check.pl --validate-wisdom` | wisdom round trip | no (no wisdom) | n/a |
 | threads checks (`--threads`, `-onthreads=`) | multithreaded plans | no (no threads) | n/a |
 | MPI tests (`mpi/`) | distributed transforms | no | n/a |
