@@ -93,3 +93,9 @@ commit, environment variables affecting threading (`MKL_THREADING_LAYER`,
 2. *2026-10-17, measurement hygiene only.* The whole run is pinned to one CPU
    (`taskset -c 0`) for every implementation, and no other heavy work runs on the machine
    during it. This applies equally to all implementations and does not change the metric.
+3. *2026-10-17, after the first final run, before measuring i7.* The machine changed back
+   to Sapphire Rapids (family 6 model 207, 2.1 GHz) when the container was re-provisioned,
+   and a further iteration (i7) was added. No protocol rule changes: as in amendment 1, a
+   new run re-measures every iteration binary (i0–i7), FFTW in all three modes with wisdom
+   generated from scratch on this CPU, and MKL, in one interleaved run on one machine. The
+   Cascade Lake run (`results/clx-final`) stays in the repository as the earlier result.

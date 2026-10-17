@@ -23,6 +23,7 @@ LABELS = {
     "lean-i4": "i4  measuring planner, cache blocking",
     "lean-i5": "i5  two-pass interleaved kernels, better vectorizer",
     "lean-i6": "i6  direct kernel dispatch, planning on the real arrays",
+    "lean-i7": "i7  proved tan-factored twiddles: fewer ops in radix 16/32",
 }
 FFTW = ["fftw-measure", "fftw-patient", "fftw-exhaustive"]
 W, H = 960, 640

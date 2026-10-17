@@ -44,10 +44,14 @@ hypothesis of the error theorems, not proved.
 
 Non-power-of-two sizes, r2c/c2r, all r2r kinds, multi-dimensional, vector and strided
 problems run in the generic engine, which is pure Lean (`Core/Alg.lean`,
-`Core/Problem.lean`, `Core/FloatOps.lean`).
+`Core/Problem.lean`, `Core/FloatOps.lean`, `Core/FastExec.lean`).
 
 * Its mixed-radix algorithm is **proved** equal to the DFT in exact arithmetic
   (`exec_mkPlan_exact`).
+* The code that runs is `execFloatFast`, which the compiler substitutes for the
+  specification `exec floatOps` through `@[csimp]`. The two are **proved** equal
+  (`execFloat_eq_fast`), so the substitution changes speed and nothing else. The
+  substitution itself is done by Lean's compiler, which is trusted as in link 6.
 * Its binary64 execution (`floatOps`) has **no proved error bound**.
 * The r2c/c2r and r2r reductions to a complex DFT (`embed`, `extract`, `hermExt`) are
   **not proved**. The r2r formulas are those of the FFTW manual §4.8; they are checked

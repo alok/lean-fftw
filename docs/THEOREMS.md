@@ -57,6 +57,15 @@ common-subexpression-eliminates them into straight-line `Kernel`s (`cst`, `add`,
 
 `butterflyK fwd R tw` is the exact kernel that the C code generator prints as SIMD C.
 
+The generator's optimizations are part of what these theorems cover, because
+`butterflyK_correct` is about the kernel after every rewrite. Two of them have their own
+lemmas:
+
+| Lemma | Statement |
+|---|---|
+| `ev_contract` | FMA contraction (`SExpr.contract`) does not change an expression's real value |
+| `evC_rotQ` | the twiddle rotation `SC.rotQ k n a b` denotes `(a + ib) · exp(2πik/n)` for `4k < n`. Since i7 a rotation by `θ ∉ (π/4)ℤ` is generated as `cos θ · (a − tan θ · b) + i · cos θ · (b + tan θ · a)` (one fused operation per part; the product by `cos θ` fuses into the butterfly additions), and the proof uses `tan θ · cos θ = sin θ` with `cos θ > 0` (`cos_two_pi_div_pos`) |
+
 ### The Stockham schedule (`Proof/Stockham.lean`)
 
 `stockhamWith A fwd N rs twOf z` (`Gen/Stockham.lean`) runs the passes of a plan with radices
@@ -67,6 +76,24 @@ twiddle table `twOf t`. It is the reference semantics of the fast engine.
 |---|---|
 | `stockInv_pass` | one pass of radix `R` maps the invariant `StockInv fwd N ns x` to `StockInv fwd N (ns*R) x` (the data holds the size-`ns` sub-DFTs, in Stockham order) |
 | `stockhamWith_exact` | for positive radices with `N = ∏ rs` and `z.size = 2N`, over exact reals with exact twiddles `exactTwOf`, `stockhamWith realArith fwd N rs (exactTwOf fwd N rs) z` is exactly `dftSum fwd N` of `z`, re/im interleaved |
+
+### The generic engine's compiled code (`Core/FastExec.lean`)
+
+`execFloat p x = exec floatOps p x` is the generic algorithm run on binary64 values. The
+compiled library runs a different function, `execFloatFast`, which materializes the input
+once, reads sub-transforms at an offset and stride, and sums each output in an unboxed
+loop. `@[csimp]` makes the compiler substitute it for `execFloat`; the attribute is only
+accepted with a proof that the two functions are equal.
+
+| Theorem | Statement |
+|---|---|
+| `execFloat_eq_fast` | `@execFloat = @execFloatFast` (so the fast code computes exactly, bit for bit, what the specification computes) |
+| `Fast.execArr_eq` | `execArr p X off st = exec floatOps p (fun j => X.get (off + st*j))` |
+| `exec_congr` | `exec O p` reads its input only at indices below `p.size` |
+
+The proof needs only Lean core (the executable library does not depend on Mathlib). It
+holds because the fast loops perform the same `Float` operations as `exec floatOps`, in
+the same order, from the same starting value `0`.
 
 ## 3. Floating-point error bounds
 
@@ -118,7 +145,8 @@ Hypotheses of the binary64 theorems, stated explicitly:
 
 * The generic engine's executable path (`floatOps`, `Core/FloatOps.lean`, used for
   non-power-of-two sizes, r2c/c2r, r2r, multi-dimensional and strided problems) has an
-  exact-arithmetic algorithm proof (`exec_mkPlan_exact`) but no floating-point bound, and
+  exact-arithmetic algorithm proof (`exec_mkPlan_exact`) and a proof that its compiled
+  fast form computes the same function (`execFloat_eq_fast`), but no floating-point bound, and
   the r2r/r2c embeddings (`Core/Problem.lean`) are not proved; they are validated by FFTW's
   own test harness.
 * The accuracy of the twiddle generator (`Trig`) and of decimal constants (`τ`, `κ` above).
