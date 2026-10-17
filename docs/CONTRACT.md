@@ -22,8 +22,10 @@ All transforms are **unnormalized**. For a complex array `x` of length `n`:
   backward DFT of the Hermitian-symmetric array determined by those outputs;
   as in FFTW, the imaginary parts of the self-conjugate entries are ignored.
 * r2r kinds R2HC, HC2R, DHT, REDFT00/01/10/11, RODFT00/01/10/11: the formulas in
-  FFTW manual §4.8 ("What FFTW Really Computes"), stated in Lean in
-  `LeanFFTW/Spec/R2R.lean`.
+  FFTW manual §4.8 ("What FFTW Really Computes"). They are implemented by reduction to a
+  complex DFT (`embed`/`extract` in `LeanFFTW/Core/Problem.lean`); the formulas are not
+  yet stated as Lean theorems, and these kinds are validated by FFTW's test harness
+  (see [TRUST.md](TRUST.md)).
 
 ## Data layout and problem space
 
@@ -45,10 +47,13 @@ split real/imaginary storage, "destroy input allowed", element type `double`.
 
 ## Accuracy
 
-* Exact-arithmetic semantics: proved equal to the specification (docs/THEOREMS.md).
+* Exact-arithmetic semantics: the fast engine's schedule and the generic engine's
+  mixed-radix algorithm are proved equal to the specification ([THEOREMS.md](THEOREMS.md)).
 * Floating-point: each binary64 operation is modeled as IEEE round-to-nearest-even
-  (FloatLib's binary64 model). The proved bound is stated in docs/THEOREMS.md with
-  its hypotheses (finite inputs, no overflow/underflow, twiddle accuracy).
+  (FloatLib's binary64 model). For the fast engine's reference semantics the proved bound
+  is stated in [THEOREMS.md](THEOREMS.md) with its hypotheses (finite values, no
+  overflow, constant and twiddle accuracy); subnormals are covered. The generic engine
+  has no proved floating-point bound.
 * Empirical acceptance: libbench2 `--verify` tolerance, the same tolerance FFTW's
   own tests apply to FFTW.
 
