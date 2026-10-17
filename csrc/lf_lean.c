@@ -154,15 +154,20 @@ static int bytime(const void *a, const void *b)
 
 lf_plan *lf_plan_measure(size_t N, int fwd, int *s_out, int *R_out)
 {
+     return lf_plan_measure_arrays(N, fwd, 0, 0, s_out, R_out);
+}
+
+lf_plan *lf_plan_measure_arrays(size_t N, int fwd, double *in, double *out, int *s_out, int *R_out)
+{
      struct pm m;
      size_t top, n0;
      static const size_t Qs[] = { 0, 32, 128 };
-     lf_plan *best;
+     lf_plan *best = 0, *lead[4] = { 0 };
      memset(&m, 0, sizeof m);
      m.N = N; m.fwd = fwd;
      m.base = lf_lean_base_table(N, fwd);
-     m.in = aligned_alloc(64, (2 * N * sizeof(double) + 63) / 64 * 64);
-     m.out = aligned_alloc(64, (2 * N * sizeof(double) + 63) / 64 * 64);
+     m.in = in ? in : aligned_alloc(64, (2 * N * sizeof(double) + 63) / 64 * 64);
+     m.out = out ? out : aligned_alloc(64, (2 * N * sizeof(double) + 63) / 64 * 64);
      memset(m.in, 0, 2 * N * sizeof(double));
      lf_enumerate(N, fwd, collect, &m);
      /* 1: every radix sequence and schedule */
@@ -191,19 +196,24 @@ lf_plan *lf_plan_measure(size_t N, int fwd, int *s_out, int *R_out)
                     }
           }
      qsort(m.c, m.n, sizeof m.c[0], bytime);
-     /* 3: re-time the leaders, interleaved, to reduce the effect of noise */
+     /* 3: re-time the leaders, interleaved, to reduce the effect of noise. The plans are
+        built once and the winner is returned as built, with the work arrays it was timed with. */
      top = m.n < 4 ? m.n : 4;
-     for (size_t i = 0; i < top; ++i) m.c[i].t = 1e30;
+     for (size_t i = 0; i < top; ++i) { m.c[i].t = 1e30; lead[i] = build(&m, &m.c[i]); }
      for (int round = 0; round < 3; ++round)
           for (size_t i = 0; i < top; ++i) {
-               lf_plan *p = build(&m, &m.c[i]);
-               double t = p ? time_plan(p, m.in, m.out, 3, 5e-4) : 1e30;
+               double t = lead[i] ? time_plan(lead[i], m.in, m.out, 3, 5e-4) : 1e30;
                if (t < m.c[i].t) m.c[i].t = t;
-               lf_destroy(p);
           }
-     qsort(m.c, top, sizeof m.c[0], bytime);
-     best = m.n ? build(&m, &m.c[0]) : 0;
+     {
+          size_t b = 0;
+          for (size_t i = 1; i < top; ++i) if (m.c[i].t < m.c[b].t) b = i;
+          for (size_t i = 0; i < top; ++i) if (i != b) lf_destroy(lead[i]);
+          if (top) { best = lead[b]; m.c[0] = m.c[b]; }
+     }
      if (best && s_out) { *s_out = m.c[0].s; memcpy(R_out, m.c[0].R, (size_t)m.c[0].s * sizeof(int)); }
-     free(m.c); free(m.base); free(m.in); free(m.out);
+     free(m.c); free(m.base);
+     if (!in) free(m.in);
+     if (!out) free(m.out);
      return best;
 }

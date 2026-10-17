@@ -3,6 +3,7 @@
 #include "lf_kernels.h"
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #ifdef LF_PROFILE
 int lf_dbg_phase = 0;   /* profiling builds: 1 = only the passes < T, 2 = only the others */
@@ -12,6 +13,8 @@ int lf_dbg_phase = 0;   /* profiling builds: 1 = only the passes < T, 2 = only t
 #endif
 
 struct lf_plan {
+     /* whole-transform kernel (s = 1, LF_CFUSED), called directly by lf_execute */
+     lf_small_fn direct;
      size_t N;
      int fwd, s, vl, mode;
      int R[LF_MAXPASS];
@@ -111,6 +114,22 @@ static size_t leaf_ofs(size_t d, int s, const int *R, const size_t *nst)
      return o;
 }
 
+/* Work arrays of 1 MiB or more are 2 MiB aligned and marked for transparent huge pages:
+   fewer TLB misses, and cache-set placement that does not depend on which physical 4 KiB
+   pages a particular allocation received. */
+static void *lf_alloc(size_t bytes)
+{
+     if (bytes >= ((size_t)1 << 20)) {
+          size_t a = (size_t)2 << 20, n = (bytes + a - 1) / a * a;
+          void *q = aligned_alloc(a, n);
+          if (q) madvise(q, n, MADV_HUGEPAGE);
+          return q;
+     }
+     return aligned_alloc(64, (bytes + 63) / 64 * 64);
+}
+
+static void copy1(const double *in, double *out) { out[0] = in[0]; out[1] = in[1]; }
+
 lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *base, int mode)
 {
      int vl = lf_mode_vl(N, fwd, s, R, mode);
@@ -122,15 +141,20 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
      memcpy(p->R, R, (size_t)s * sizeof(int));
      if (s == 1) {
           p->small = N == 1 ? 0 : lf_get_small((int)N, fwd);
+          p->direct = p->small ? p->small : copy1;
           return p;
      }
      nst[0] = 1;
      for (int t = 1; t <= s; ++t) nst[t] = nst[t - 1] * (size_t)R[t - 1];
      memcpy(p->nst, nst, sizeof nst);
-     if (mode == LF_CFUSED) { p->cfused = lf_get_cfused(R[0], R[1], vl, fwd); return p; }
+     if (mode == LF_CFUSED) {
+          p->cfused = lf_get_cfused(R[0], R[1], vl, fwd);
+          p->direct = p->cfused;
+          return p;
+     }
      if (mode == LF_CTWO) {
           p->ctwo = lf_get_ctwo(R[0], R[1], vl, fwd);
-          p->buf = aligned_alloc(64, 2 * N * sizeof(double));
+          p->buf = lf_alloc(2 * N * sizeof(double));
           return p;
      }
      if (mode == LF_FUSED) p->fused = lf_get_fused(R[0], R[1], vl, fwd);
@@ -138,7 +162,7 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
           p->first = lf_get_first(R[0], vl, fwd);
           for (int t = 1; t < s - 1; ++t) p->mid[t] = lf_get_mid(R[t], vl, fwd);
           p->last = lf_get_last(R[s - 1], vl, fwd);
-          p->buf = aligned_alloc(64, 4 * N * sizeof(double));
+          p->buf = lf_alloc(4 * N * sizeof(double));
      } else {
           size_t ng = N / (size_t)R[0] / (size_t)vl;
           p->leaf = lf_get_leaf(R[0], vl, fwd);
@@ -147,13 +171,13 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
           p->gofs = malloc(ng * sizeof(unsigned));
           for (size_t g = 0; g < ng; ++g) p->gofs[g] = (unsigned)leaf_ofs(g * (size_t)vl, s, R, nst);
           for (int l = 0; l < vl; ++l) p->ldel[l] = (unsigned)leaf_ofs((size_t)l, s, R, nst);
-          p->buf = aligned_alloc(64, 2 * N * sizeof(double));
+          p->buf = lf_alloc(2 * N * sizeof(double));
      }
      {
           /* gather each pass's table from the base table w[m] = omega_N^m:
              pass (R, ns) entry (r, k) is omega_N^(r k N/(ns R)) */
           size_t tot = lf_twiddle_size(N, s, R), ns = (size_t)R[0], off = 0;
-          p->tw = aligned_alloc(64, (tot * sizeof(double) + 63) / 64 * 64 + 64);
+          p->tw = lf_alloc(tot * sizeof(double) + 64);
           for (int t = 1; t < s; ++t) {
                size_t Rt = (size_t)R[t], step = N / (ns * Rt);
                p->twoff[t] = off;
@@ -170,17 +194,21 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
      return p;
 }
 
+static void execute_passes(const lf_plan *p, const double *in, double *out);
+
+/* Kept small so that whole-transform plans reach their kernel by a tail call, without the
+   register saves of the multi-pass schedules. */
 void lf_execute(const lf_plan *p, const double *in, double *out)
+{
+     if (p->direct) { p->direct(in, out); return; }
+     if (p->mode == LF_CTWO) { p->ctwo(in, in == out ? p->buf : out, out); return; }
+     execute_passes(p, in, out);
+}
+
+__attribute__((noinline)) static void execute_passes(const lf_plan *p, const double *in, double *out)
 {
      const size_t N = p->N;
      size_t ns;
-     if (p->s == 1) {
-          if (p->small) p->small(in, out);
-          else { out[0] = in[0]; out[1] = in[1]; }
-          return;
-     }
-     if (p->mode == LF_CFUSED) { p->cfused(in, out); return; }
-     if (p->mode == LF_CTWO) { p->ctwo(in, in == out ? p->buf : out, out); return; }
      if (p->mode == LF_FUSED) { p->fused(in, out, p->tw); return; }
      if (p->mode == LF_INPLACE) {
           const int s = p->s, T = p->T;

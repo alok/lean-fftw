@@ -230,7 +230,9 @@ static int fast_ok(const bench_problem *p)
 void setup(bench_problem *p)
 {
      if (fast_ok(p)) {
-          fplan = lf_plan_measure((size_t) p->sz->dims[0].n, p->sign < 0, 0, 0);
+          /* plan on the problem's own arrays, as FFTW does; libbench2 zeroes them after setup */
+          fplan = lf_plan_measure_arrays((size_t) p->sz->dims[0].n, p->sign < 0,
+                                         (double *) p->in, (double *) p->out, 0, 0);
           if (fplan) {
                fin = (double *) p->in; fout = (double *) p->out;
                return;

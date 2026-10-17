@@ -156,3 +156,46 @@ error < 1e-14 for N = 1…2^18, forward and backward, in and out of place.
 Quick timings on Cascade Lake (ns; i4 from `clx-quick1`, i5 from `prof_fast`, so only
 indicative): N=32 34.6 → 27.2; 64 63.6 → 52.9; 128 149 → 123; 256 440 → 275;
 512 819 → 754.
+
+## i6: direct dispatch of whole-transform kernels; planning on the caller's arrays
+
+The first round of the final protocol run (i0–i5, aborted after round 1 to add this
+iteration; kept as `results/clx-protocol-aborted1`) put i5 at G ≈ 0.84 against FFTW's best
+mode, with i5 *slower than i4* at N = 2 and 4 (4.85 ns vs 3.65 ns, reproducible).
+
+Hypotheses:
+
+1. At N ≤ 16 the fixed cost of `lf_execute` matters. It saved six registers and set up a
+   stack frame on every call, because the multi-pass schedules share its body, before
+   calling a kernel that does 4–100 flops. Why the i4 binary is faster at N = 2 was not
+   established: its `lf_execute` is instruction for instruction the same, and its kernels
+   were compiled on the earlier CPU (recompiling i5's kernels with that CPU's
+   false-dependency tuning did not help).
+2. At N ≥ 2^15 the planner's choice is unstable: the plan that wins during planning runs
+   on freshly allocated arrays and is then rebuilt with new work arrays. The same plan's
+   time varies by up to 40% with the physical pages it gets (power-of-two strides,
+   L2/L3 set conflicts).
+
+Changes:
+
+* `lf_execute` is now a small function: plans that are one kernel (N ≤ 8 small kernels,
+  `LF_CFUSED`) store it in `p->direct` and are reached by a tail call; `LF_CTWO` is a
+  tail call too; the multi-pass schedules moved to a separate function. N = 2: 4.83 → 2.43
+  ns; 4: 4.96 → 3.33; 8: 7.22 → 5.46; 16: 13.0 → 11.4 (bench, CPU 3, single runs).
+* The planner keeps the four leading plans it built, re-times them, and returns the
+  winner as timed, with its work arrays, instead of rebuilding it.
+  `lf_plan_measure_arrays` times on the caller's arrays, as FFTW's planner does with the
+  user's arrays; the libbench2 backend now uses it (libbench2 zeroes the arrays after
+  setup, for every implementation).
+* Work arrays and twiddle tables of 1 MiB or more are 2 MiB aligned with
+  `madvise(MADV_HUGEPAGE)`.
+
+Finding: hypothesis 2 is only partly right. A fixed plan at N = 2^18 still varies from
+2.0 to 3.0 ms between processes and within one process (min of 8 timings). That is the
+machine itself (other tenants' memory traffic on the shared L3), and it affects FFTW
+equally. The planner changes remove one source of mismatch but cannot remove that noise.
+The protocol's median of 10 interleaved runs is what handles it.
+
+Tests: `test_fast 14 18`: 3,726 plans, 0 mismatches against the Lean reference;
+libbench2 `--verify` passes for `ocf`, `icf`, `ocb`, `icb` at N = 1…2^18 (76 problems), max
+L2 error 4.8e-16.

@@ -19,4 +19,8 @@ void lf_enumerate(size_t N, int fwd, void (*f)(int s, const int *R, int fuse, vo
    If R_out is non-null, the chosen sequence is stored there and its length in *s_out. */
 lf_plan *lf_plan_measure(size_t N, int fwd, int *s_out, int *R_out);
 
+/* As lf_plan_measure, timing on the caller's arrays (as FFTW's planner does): in == out
+   plans the in-place case. Their contents are overwritten (in is zeroed). */
+lf_plan *lf_plan_measure_arrays(size_t N, int fwd, double *in, double *out, int *s_out, int *R_out);
+
 #endif
