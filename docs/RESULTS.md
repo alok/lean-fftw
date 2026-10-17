@@ -78,7 +78,20 @@ Planning time (medians, not part of G): Lean FFTW 0.013 s at N = 2, 0.34 s at N 
 
 ### Accuracy
 
-Accuracy of the i7 kernels: being measured (libbench2 `--accuracy`, as in the earlier run).
+libbench2 `--accuracy` (10 random inputs per size), forward relative L2 error. Data:
+[`results/spr-i7/accuracy.json`](../results/spr-i7/accuracy.json).
+
+| N | Lean i7 | FFTW (measure / patient / exhaustive) | MKL |
+|---|---|---|---|
+| 8 | 6.2e-17 | 7.0e-17 / 7.0e-17 / 7.0e-17 | 5.6e-17 |
+| 64 | 1.2e-16 | 1.4e-16 / 1.4e-16 / 1.4e-16 | 1.2e-16 |
+| 1024 | 1.8e-16 | 1.9e-16 / 1.8e-16 / 1.8e-16 | 1.8e-16 |
+| 16384 | 2.3e-16 | 2.2e-16 / 2.3e-16 / 2.3e-16 | 2.3e-16 |
+| 262144 | 2.6e-16 | 2.7e-16 / 2.7e-16 / 2.8e-16 | 3.7e-16 |
+
+At every size, the error of the i7 kernels is at most 1.08× the lowest of the three FFTW
+modes (worst at N = 4096); the protocol's limit is 2×. N = 2 and 4 are exact or nearly so
+for all implementations.
 
 ### Non-power-of-two sizes (generic engine)
 
@@ -109,7 +122,10 @@ which has not been done.
   mismatches.
 * libbench2 `--verify`: `ocf` at all 18 primary sizes and `icf`, `ocb`, `icb` at 9 of
   them pass.
-* FFTW's bigcheck enumeration on the i7 library: running.
+* FFTW's bigcheck enumeration (`check.pl -a`) on the i7 library: 50,702 of 50,702
+  problems pass `--verify`, and all 30 problems that must be rejected are rejected
+  ([`results/bigcheck-i7/`](../results/bigcheck-i7)). With the `@[csimp]` executor the
+  whole enumeration took 17 minutes on 4 cores; with i6 it took about an hour.
 
 ## Earlier run: Cascade Lake (i0–i6)
 

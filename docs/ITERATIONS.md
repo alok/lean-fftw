@@ -252,4 +252,5 @@ in operation counts.
 
 Tests: `test_fast 14 18`: 3,726 plans, 0 mismatches against the Lean reference; libbench2
 `--verify` passes for `ocf` at all 18 primary sizes and for `icf`, `ocb`, `icb` at 9 of
-them; bigcheck as reported in RESULTS.md.
+them; bigcheck 50,702 of 50,702 pass and 30 of 30 rejected; accuracy within 1.08× of
+FFTW's best mode.
