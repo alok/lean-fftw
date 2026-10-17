@@ -84,4 +84,12 @@ commit, environment variables affecting threading (`MKL_THREADING_LAYER`,
 
 ## Amendments
 
-(none)
+1. *2026-10-17, before the final run.* The cloud machine changed between iterations i4 and
+   i5 (Sapphire Rapids, 2.1 GHz → Cascade Lake, 2.8 GHz; the container was re-provisioned).
+   No protocol rule changes: the final run re-measures **every** iteration binary (i0–i5),
+   FFTW in all three planner modes (with wisdom regenerated on the new CPU) and MKL on the
+   same machine in one interleaved run, so all comparisons stay within one machine. The
+   i0 baseline run on Sapphire Rapids is kept and reported separately.
+2. *2026-10-17, measurement hygiene only.* The whole run is pinned to one CPU
+   (`taskset -c 0`) for every implementation, and no other heavy work runs on the machine
+   during it. This applies equally to all implementations and does not change the metric.
