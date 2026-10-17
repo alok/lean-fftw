@@ -1,0 +1,1 @@
+Problem: ocf32, setup: 11.00 us, time: 51.53 ns, ``mflops'': 15524.11

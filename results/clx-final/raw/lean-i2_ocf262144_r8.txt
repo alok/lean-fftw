@@ -1,0 +1,1 @@
+Problem: ocf262144, setup: 21.40 s, time: 3.24 ms, ``mflops'': 7278.4081

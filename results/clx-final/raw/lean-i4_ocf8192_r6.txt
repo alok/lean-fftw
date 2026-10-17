@@ -1,0 +1,1 @@
+Problem: ocf8192, setup: 775.56 ms, time: 22.81 us, ``mflops'': 23341.589

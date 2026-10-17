@@ -1,0 +1,1 @@
+Problem: ocf4096, setup: 161.12 ms, time: 13.17 us, ``mflops'': 18662.087

@@ -1,0 +1,1 @@
+Problem: ocf2048, setup: 435.43 ms, time: 4.34 us, ``mflops'': 25928.596

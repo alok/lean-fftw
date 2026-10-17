@@ -57,7 +57,8 @@ int can_do(bench_problem *p)
      int i;
      if (!BENCH_FINITE_RNK(p->sz->rnk) || !BENCH_FINITE_RNK(p->vecsz->rnk)) return 0;
      for (i = 0; i < p->sz->rnk; ++i) if (p->sz->dims[i].n <= 0) return 0;
-     for (i = 0; i < p->vecsz->rnk; ++i) if (p->vecsz->dims[i].n <= 0) return 0;
+     /* as in FFTW, an empty vector dimension (n = 0) is allowed: nothing to compute */
+     for (i = 0; i < p->vecsz->rnk; ++i) if (p->vecsz->dims[i].n < 0) return 0;
      if (p->kind == PROBLEM_REAL && p->sz->rnk < 1) return 0;
      if (p->kind == PROBLEM_R2R)
           for (i = 0; i < p->sz->rnk; ++i)

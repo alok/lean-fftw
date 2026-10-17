@@ -1,0 +1,129 @@
+{
+ "environment": {
+  "date": "2026-10-17T02:16:26Z",
+  "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Xeon(R) Processor @ 2.80GHz\nCPU family:                              6\nModel:                                   85\nThread(s) per core:                      1\nCore(s) per socket:                      4\nSocket(s):                               1\nStepping:                                7\nBogoMIPS:                                5600.54\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault ssbd ibrs ibpb stibp ibrs_enhanced fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap clflushopt clwb avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves arat umip avx512_vnni md_clear arch_capabilities\nHypervisor vendor:                       KVM\nVirtualization type:                     full\nL1d cache:                               128 KiB (4 instances)\nL1i cache:                               128 KiB (4 instances)\nL2 cache:                                4 MiB (4 instances)\nL3 cache:                                33 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Mitigation; Aligned branch/return thunks\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; Enhanced IBRS\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI Vulnerable\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\nVulnerability Vmscape:                   Not affected",
+  "kernel": "6.18.44-fc-v139",
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "lean": "leanprover/lean4:v4.35.0",
+  "lean_fftw_commit": "981f284bd25a7cb205cef7769a553e710091ca75",
+  "lean_fftw_dirty": "0",
+  "env": {
+   "MKL_THREADING_LAYER": null,
+   "OMP_NUM_THREADS": null
+  },
+  "loadavg": [
+   0.5146484375,
+   0.98095703125,
+   1.11328125
+  ]
+ },
+ "impls": {
+  "lean-i0": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i0"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "lean-i1": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i1"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "lean-i2": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i2"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "lean-i3": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i3"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "lean-i4": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i4"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "lean-i5": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i5"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "lean-i6": {
+   "cmd": [
+    "/root/build/iters/bench-lean-i6"
+   ],
+   "cwd": null,
+   "env": {}
+  },
+  "fftw-measure": {
+   "cmd": [
+    "/root/dl/fftw/fftw3-3.3.10/tests/bench",
+    "-owisdom"
+   ],
+   "cwd": "/root/results/wisdom/measure",
+   "env": {}
+  },
+  "fftw-patient": {
+   "cmd": [
+    "/root/dl/fftw/fftw3-3.3.10/tests/bench",
+    "-opatient",
+    "-owisdom"
+   ],
+   "cwd": "/root/results/wisdom/patient",
+   "env": {}
+  },
+  "fftw-exhaustive": {
+   "cmd": [
+    "/root/dl/fftw/fftw3-3.3.10/tests/bench",
+    "-oexhaustive",
+    "-owisdom"
+   ],
+   "cwd": "/root/results/wisdom/exhaustive",
+   "env": {}
+  },
+  "mkl": {
+   "cmd": [
+    "/root/build/bench-mkl"
+   ],
+   "cwd": null,
+   "env": {
+    "MKL_THREADING_LAYER": "SEQUENTIAL"
+   }
+  }
+ },
+ "sizes": [
+  2,
+  4,
+  8,
+  16,
+  32,
+  64,
+  128,
+  256,
+  512,
+  1024,
+  2048,
+  4096,
+  8192,
+  16384,
+  32768,
+  65536,
+  131072,
+  262144
+ ],
+ "runs": 10,
+ "problem": "ocfN",
+ "seed": 20261016
+}

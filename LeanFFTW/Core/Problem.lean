@@ -210,13 +210,13 @@ structure ProblemPlan where
   outReal : Bool
   deriving Inhabited
 
-/-- Plan a problem. Returns `none` when the problem is outside the supported domain. -/
-def planProblem (p : Problem) : Option ProblemPlan :=
+/-- Plan a problem, ignoring empty vector dimensions. -/
+def planProblemCore (p : Problem) : Option ProblemPlan :=
   let v := p.vecsz.size
   let r := p.sz.size
   let ns := p.sz.map (·.n)
   let vs := p.vecsz.map (·.n)
-  if ns.any (· == 0) || vs.any (· == 0) then none else
+  if ns.any (· == 0) then none else
   match p.kind with
   | .dft fwd =>
       let ops := (Array.range r).map fun d => (v + d, LineOp.cdft (plan1d fwd (ns.getD d 1)))
@@ -247,6 +247,13 @@ def planProblem (p : Problem) : Option ProblemPlan :=
           let fwd := k != .hc2r
           (v + d, LineOp.r2r k n (plan1d fwd (k.embedSize n)))
         some ⟨p, ops, vs ++ ns, vs ++ ns, true, true⟩
+
+/-- Plan a problem. Returns `none` when the problem is outside the supported domain. As in
+FFTW, transform dimensions must have `n ≥ 1`, while a vector dimension of size 0 is allowed
+and makes the problem empty: nothing is read or written. -/
+def planProblem (p : Problem) : Option ProblemPlan :=
+  (planProblemCore p).map fun pp =>
+    if p.vecsz.any (·.n == 0) then { pp with ops := #[] } else pp
 
 /-- Execute a planned problem: read `inp`, write into (a copy of) `out`. -/
 def execProblem (pp : ProblemPlan) (inp : FloatArray) (out : FloatArray) : FloatArray := Id.run do

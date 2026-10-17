@@ -88,7 +88,7 @@ def main(d, out):
             dr.text((X(k) - 8, H - B + 8), f"2^{n.bit_length() - 1}", font=f12, fill=(90, 90, 90))
         dr.text(((W - L - R) // 2 + L - 20, H - B + 26), "size N", font=f12, fill=(90, 90, 90))
         dr.line([(L, Y(1.0)), (W - R, Y(1.0))], fill=(30, 90, 200), width=2)
-        dr.text((W - R - 90, Y(1.0) - 20), "FFTW = 1", font=f14, fill=(30, 90, 200))
+        dr.text((L + 6, Y(1.0) - 20), "FFTW = 1", font=f14, fill=(30, 90, 200))
         if "mkl" in speed:
             poly(dr, speed["mkl"], (150, 150, 150), 1)
             dr.text((W - R - 90, Y(speed["mkl"][-1]) + 4), "MKL", font=f14, fill=(120, 120, 120))
@@ -107,7 +107,7 @@ def main(d, out):
                 fill=(120, 120, 120))
         # G history, bottom right
         gx, gy, gw, gh = W - R - 250, H - 118, 250, 100
-        g0, g1 = 0.6, max(1.3, max(stats[i]["ci95"][1] for i in iters) + 0.05)
+        g0, g1 = 0.65, max(1.3, max(stats[i]["ci95"][1] for i in iters) + 0.05)
 
         def GY(g):
             return gy + gh - gh * (g - g0) / (g1 - g0)
@@ -115,7 +115,7 @@ def main(d, out):
         dr.text((gx, gy - 18), "G by iteration (lower is better)", font=f12, fill=(90, 90, 90))
         for g, col, lab in ((1.0, (30, 90, 200), "1.0 parity"), (0.9, (30, 160, 60), "0.9 target")):
             dr.line([(gx, GY(g)), (gx + gw, GY(g))], fill=col)
-            dr.text((gx + gw - 70, GY(g) - 14), lab, font=f12, fill=col)
+            dr.text((gx + gw - 72, GY(g) - (14 if g > 0.95 else -1)), lab, font=f12, fill=col)
         for j, i in enumerate(iters[:fi + 1]):
             cx = gx + 20 + j * (gw - 100) / max(1, len(iters) - 1)
             a, b = stats[i]["ci95"]
