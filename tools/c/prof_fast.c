@@ -43,7 +43,7 @@ int main(int argc, char **argv)
      lf_enumerate(N, 1, f, &c);
      qsort(c.r, c.n, sizeof c.r[0], cmp);
      for (int i = 0; i < c.n && i < top; ++i) {
-          printf("%9.3f ns  %s", c.r[i].t * 1e9, (const char *[]){"", "fused ", "inplace ", "cfused "}[c.r[i].fuse]);
+          printf("%9.3f ns  %s", c.r[i].t * 1e9, (const char *[]){"", "fused ", "inplace ", "cfused ", "ctwo "}[c.r[i].fuse]);
           for (int t = 0; t < c.r[i].s; ++t) printf("%d%s", c.r[i].R[t], t + 1 < c.r[i].s ? "x" : "");
           printf("   %.2f Gflop/s\n", 5.0 * N * __builtin_ctzl(N) / c.r[i].t * 1e-9);
      }

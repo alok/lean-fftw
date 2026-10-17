@@ -75,6 +75,8 @@ structure VCtx where
   k : Kernel
   pfx : String
   ind : String
+  /-- planned pairs (`slpPairs`): slot ↦ (partner, slot is the low lane) -/
+  pp : HashMap Nat (Nat × Bool) := {}
 
 def VCtx.op (c : VCtx) (s : Nat) : Option KOp :=
   if s < c.k.nIn then none else c.k.ops[s - c.k.nIn]?
@@ -105,10 +107,133 @@ def fsign : KOp → Option (Nat × Nat × Nat × Bool × Bool)
   | .fnma a b c => some (a, b, c, false, true)
   | _ => none
 
+/-- The operand pairings a lane-wise vector operation could use for slots `o₁, o₂`
+(commutative operands in either order); `none` when no single vector operation applies. -/
+def vcands : KOp → KOp → Option (List (List (Nat × Nat)))
+  | .add a₁ b₁, .add a₂ b₂ | .mul a₁ b₁, .mul a₂ b₂ =>
+      some [[(a₁, a₂), (b₁, b₂)], [(a₁, b₂), (b₁, a₂)]]
+  | .sub a₁ b₁, .sub a₂ b₂ => some [[(a₁, a₂), (b₁, b₂)]]
+  | .sub a₁ b₁, .add a₂ b₂ => some [[(a₁, a₂), (b₁, b₂)], [(a₁, b₂), (b₁, a₂)]]
+  | .add a₁ b₁, .sub a₂ b₂ => some [[(a₁, a₂), (b₁, b₂)], [(b₁, a₂), (a₁, b₂)]]
+  | .neg a₁, .neg a₂ => some [[(a₁, a₂)]]
+  | o₁, o₂ =>
+    match fsign o₁, fsign o₂ with
+    | some (a₁, b₁, c₁, _), some (a₂, b₂, c₂, _) =>
+        some [[(a₁, a₂), (b₁, b₂), (c₁, c₂)], [(a₁, b₂), (b₁, a₂), (c₁, c₂)]]
+    | _, _ => none
+
+/-- Operand slots of an operation. -/
+def KOp.args : KOp → List Nat
+  | .add a b | .sub a b | .mul a b => [a, b]
+  | .neg a => [a]
+  | .fma a b c | .fms a b c | .fnma a b c => [a, b, c]
+  | _ => []
+
+/-- Bottom-up pairing of kernel slots into vectors (SLP): input `2i` is paired with `2i+1`;
+an operation is paired with an unpaired user of a partner of one of its operands when one
+lane-wise vector operation computes both, preferring operand pairs that are already planned
+(in either lane order; a reversed pair costs a lane exchange). This is only a plan that steers
+`vpair`; correctness does not depend on it. -/
+def slpPairs (k : Kernel) : HashMap Nat (Nat × Bool) := Id.run do
+  let n := k.nIn + k.ops.size
+  let op (s : Nat) : Option KOp := if s < k.nIn then none else k.ops[s - k.nIn]?
+  let mut users : Array (List Nat) := Array.replicate n []
+  for i in [0:k.ops.size] do
+    for a in (k.ops[i]!).args do
+      if a < n then users := users.set! a ((k.nIn + i) :: users[a]!)
+  let mut pp : HashMap Nat (Nat × Bool) := {}
+  for i in [0:k.nIn / 2] do
+    pp := (pp.insert (2 * i) (2 * i + 1, true)).insert (2 * i + 1) (2 * i, false)
+  let isConst (s : Nat) : Bool := match op s with
+    | some (.cst _) | some .zero => true
+    | _ => false
+  for s in [k.nIn:n] do
+    if pp.contains s then continue
+    let some o := op s | continue
+    if isConst s then continue
+    -- candidate partners: users of the partners of the operands
+    let mut cands : List Nat := []
+    for a in o.args do
+      if let some (a', _) := pp[a]? then
+        for t in users[a']! do
+          if t != s && !pp.contains t && !cands.contains t then cands := t :: cands
+    let mut best : Option (Nat × Bool × Nat) := none
+    for t in cands do
+      let some o' := op t | continue
+      for lowS in [true, false] do
+        let (o₁, o₂) := if lowS then (o, o') else (o', o)
+        let some cs := vcands o₁ o₂ | continue
+        for cand in cs do
+          let mut sc := 0
+          for (x, y) in cand do
+            sc := sc + (if x == y then 3
+              else if isConst x && isConst y then 0
+              else match pp[x]? with
+                | some (x', true) => if x' == y then 0 else 3
+                | some (x', false) => if x' == y then 1 else 3
+                | none => 3)
+          let better := match best with
+            | none => true
+            | some (_, _, b) => sc < b
+          if better && sc < 3 then best := some (t, lowS, sc)
+    if let some (t, lowS, _) := best then
+      pp := (pp.insert s (t, lowS)).insert t (s, !lowS)
+  return pp
+
+/-- Estimated number of vector operations still needed to build the pair `(s₁, s₂)` in the
+current state, looking `d` levels down (tree count, ignoring sharing below the horizon). -/
+partial def vcost (c : VCtx) (d : Nat) (s₁ s₂ : Nat) (sw : Bool := true) : VM Nat := do
+  let st ← get
+  if st.memo.contains (s₁, s₂) then return 0
+  match st.loc[s₁]?, st.loc[s₂]? with
+  | some (v, a), some (w, b) => return if v == w && a == 0 && b == 1 then 0 else 1
+  | _, _ =>
+    match c.pp[s₁]? with
+    | some (p, true) => if p == s₂ then return 1 else pure ()
+    | some (p, false) => if p == s₂ then return 2 else pure ()
+    | none => pure ()
+    if d == 0 then return (if s₁ == s₂ then 4 else 3)
+    let one (s : Nat) : VM Nat := do
+      if (← get).loc.contains s then return 0 else vcost c (d - 1) s s
+    let split : VM Nat := do
+      let t := 1 + (← one s₁) + (← one s₂)
+      -- build the swapped pair, then exchange the lanes
+      if sw && s₁ != s₂ then return min t (1 + (← vcost c (d - 1) s₂ s₁ false)) else return t
+    match c.op s₁, c.op s₂ with
+    | some o₁, some o₂ =>
+      match o₁, o₂ with
+      | .cst _, .cst _ | .zero, .zero | .cst _, .zero | .zero, .cst _ => return 1
+      | _, _ =>
+      match vcands o₁ o₂ with
+      | some cs =>
+          let mut best := 1000000
+          for cand in cs do
+            let mut t := 1
+            for (x, y) in cand do t := t + (← vcost c (d - 1) x y)
+            if t < best then best := t
+          return min best (← split)
+      | none => split
+    | _, _ => split
+
+/-- Lookahead depth of the pairing cost estimate. -/
+def vdepth : Nat := 3
+
+/-- Index of the cheapest candidate pairing. -/
+partial def vbest (c : VCtx) (cs : List (List (Nat × Nat))) : VM Nat := do
+  let mut best := 0
+  let mut bc := 1000000
+  let mut i := 0
+  for cand in cs do
+    let mut t := 0
+    for (x, y) in cand do t := t + (← vcost c vdepth x y)
+    if t < bc then bc := t; best := i
+    i := i + 1
+  return best
+
 mutual
 
 /-- A vector holding slot `s₁` in the low lane and `s₂` in the high lane. -/
-partial def vpair (c : VCtx) (s₁ s₂ : Nat) : VM String := do
+partial def vpair (c : VCtx) (s₁ s₂ : Nat) (sw : Bool := true) : VM String := do
   let st ← get
   if let some v := st.memo[(s₁, s₂)]? then return v
   match st.loc[s₁]?, st.loc[s₂]? with
@@ -116,6 +241,17 @@ partial def vpair (c : VCtx) (s₁ s₂ : Nat) : VM String := do
       if v == w && a == 0 && b == 1 then return v
       c.emit s₁ s₂ (c.t.shuffle v w a b)
   | _, _ =>
+    -- building the swapped pair and exchanging lanes may be cheaper
+    let swapped ← if sw && s₁ != s₂ && c.pp[s₁]? == some (s₂, false) then pure true
+      else if sw && s₁ != s₂ && c.pp[s₁]? == some (s₂, true) then pure false
+      else if sw && s₁ != s₂ then do
+        let cs := 1 + (← vcost c vdepth s₂ s₁ false)
+        let cd ← vcost c (vdepth + 1) s₁ s₂ false
+        pure (decide (cs < cd))
+      else pure false
+    if swapped then
+      let v ← vpair c s₂ s₁ false
+      return ← c.emit s₁ s₂ (c.t.shuffle v v 1 0)
     match c.op s₁, c.op s₂ with
     | some o₁, some o₂ =>
       match ← vmatch c s₁ s₂ o₁ o₂ with
@@ -125,16 +261,18 @@ partial def vpair (c : VCtx) (s₁ s₂ : Nat) : VM String := do
 
 /-- Fallback: compute each slot in both lanes, then shuffle. -/
 partial def vsplit (c : VCtx) (s₁ s₂ : Nat) : VM String := do
-  let v ← vpair c s₁ s₁
-  let w ← vpair c s₂ s₂
-  if v == w then return v
-  c.emit s₁ s₂ (c.t.shuffle v w 0 1)
+  let get1 (s : Nat) : VM (String × Nat) := do
+    if let some (v, a) := (← get).loc[s]? then return (v, a)
+    return (← vpair c s s, 0)
+  let (v, a) ← get1 s₁
+  let (w, b) ← get1 s₂
+  if v == w && a == 0 && b == 1 then return v
+  c.emit s₁ s₂ (c.t.shuffle v w a b)
 
 /-- Operand order for a commutative pair of operations. -/
-partial def vorder (a₁ b₁ a₂ b₂ : Nat) : VM (Nat × Nat × Nat × Nat) := do
-  if (← VCtx.avail a₁ a₂) || (← VCtx.avail b₁ b₂) then return (a₁, a₂, b₁, b₂)
-  if (← VCtx.avail a₁ b₂) || (← VCtx.avail b₁ a₂) then return (a₁, b₂, b₁, a₂)
-  return (a₁, a₂, b₁, b₂)
+partial def vorder (c : VCtx) (a₁ b₁ a₂ b₂ : Nat) : VM (Nat × Nat × Nat × Nat) := do
+  if (← vbest c [[(a₁, a₂), (b₁, b₂)], [(a₁, b₂), (b₁, a₂)]]) == 0 then return (a₁, a₂, b₁, b₂)
+  return (a₁, b₂, b₁, a₂)
 
 /-- A vector operation performing `o₁` in the low lane and `o₂` in the high lane. -/
 partial def vmatch (c : VCtx) (s₁ s₂ : Nat) (o₁ o₂ : KOp) : VM (Option String) := do
@@ -146,11 +284,11 @@ partial def vmatch (c : VCtx) (s₁ s₂ : Nat) (o₁ o₂ : KOp) : VM (Option S
     | _ => none
   match o₁, o₂ with
   | .add a₁ b₁, .add a₂ b₂ => do
-      let (x₁, x₂, y₁, y₂) ← vorder a₁ b₁ a₂ b₂
+      let (x₁, x₂, y₁, y₂) ← vorder c a₁ b₁ a₂ b₂
       let u ← vpair c x₁ x₂; let v ← vpair c y₁ y₂
       some <$> c.emit s₁ s₂ s!"{p}_add_pd({u}, {v})"
   | .mul a₁ b₁, .mul a₂ b₂ => do
-      let (x₁, x₂, y₁, y₂) ← vorder a₁ b₁ a₂ b₂
+      let (x₁, x₂, y₁, y₂) ← vorder c a₁ b₁ a₂ b₂
       let u ← vpair c x₁ x₂; let v ← vpair c y₁ y₂
       some <$> c.emit s₁ s₂ s!"{p}_mul_pd({u}, {v})"
   | .sub a₁ b₁, .sub a₂ b₂ => do
@@ -158,11 +296,11 @@ partial def vmatch (c : VCtx) (s₁ s₂ : Nat) (o₁ o₂ : KOp) : VM (Option S
       some <$> c.emit s₁ s₂ s!"{p}_sub_pd({u}, {v})"
   | .sub a₁ b₁, .add a₂ b₂ => do
       -- low a₁ − b₁, high a₂ + b₂ (either order of the sum)
-      let (a₂, b₂) := if (← VCtx.avail a₁ b₂) || (← VCtx.avail b₁ a₂) then (b₂, a₂) else (a₂, b₂)
+      let (a₂, b₂) := if (← vbest c [[(a₁, a₂), (b₁, b₂)], [(a₁, b₂), (b₁, a₂)]]) == 1 then (b₂, a₂) else (a₂, b₂)
       let u ← vpair c a₁ a₂; let v ← vpair c b₁ b₂
       some <$> c.emit s₁ s₂ s!"{p}_fmaddsub_pd({u}, {one}, {v})"
   | .add a₁ b₁, .sub a₂ b₂ => do
-      let (a₁, b₁) := if (← VCtx.avail b₁ a₂) || (← VCtx.avail a₁ b₂) then (b₁, a₁) else (a₁, b₁)
+      let (a₁, b₁) := if (← vbest c [[(a₁, a₂), (b₁, b₂)], [(b₁, a₂), (a₁, b₂)]]) == 1 then (b₁, a₁) else (a₁, b₁)
       let u ← vpair c a₁ a₂; let v ← vpair c b₁ b₂
       some <$> c.emit s₁ s₂ s!"{p}_fmsubadd_pd({u}, {one}, {v})"
   | .neg a₁, .neg a₂ => do
@@ -176,7 +314,7 @@ partial def vmatch (c : VCtx) (s₁ s₂ : Nat) (o₁ o₂ : KOp) : VM (Option S
     | _, _ =>
       match fsign o₁, fsign o₂ with
       | some (a₁, b₁, c₁, sp₁, sc₁), some (a₂, b₂, c₂, sp₂, sc₂) => do
-          let (x₁, x₂, y₁, y₂) ← vorder a₁ b₁ a₂ b₂
+          let (x₁, x₂, y₁, y₂) ← vorder c a₁ b₁ a₂ b₂
           let u ← vpair c x₁ x₂; let v ← vpair c y₁ y₂; let w ← vpair c c₁ c₂
           -- make the product signs equal by negating lanes of the first factor (exact)
           let (u, sp) ←
@@ -214,7 +352,7 @@ end
 `outs[2r], outs[2r+1]`). -/
 def Kernel.instC (k : Kernel) (t : CTarget) (ind pfx : String) (bind : Nat → String) :
     Array String × Array String := Id.run do
-  let c : VCtx := ⟨t, k, pfx, ind⟩
+  let c : VCtx := ⟨t, k, pfx, ind, slpPairs k⟩
   let mut st : VState := {}
   for i in [0:k.nIn] do
     st := { st with loc := st.loc.insert i (bind (i / 2), i % 2) }
@@ -226,6 +364,7 @@ def Kernel.instC (k : Kernel) (t : CTarget) (ind pfx : String) (bind : Nat → S
   return (st.lines, outs)
 
 def cfusedName (R1 R2 vlc : Nat) (fwd : Bool) : String := s!"lf_cfused_{R1}x{R2}_c{vlc}_{dirTag fwd}"
+def ctwoName (R1 R2 vlc : Nat) (fwd : Bool) : String := s!"lf_ctwo_{R1}x{R2}_c{vlc}_{dirTag fwd}"
 
 /-- Transpose a `VLc × VLc` block of complex numbers (rows are vectors). -/
 def ctranspose (t : CTarget) (ind tag : String) (rows : Array String) : List String × Array String :=
@@ -249,7 +388,7 @@ def ctranspose (t : CTarget) (ind tag : String) (rows : Array String) : List Str
 `passTwiddles (cosSin2PiTable N) fwd N R2 R1`, exactly). It computes the operations of
 `refTransform fwd N #[R1, R2]`. Requires `VLc ∣ R1` and `VLc ∣ R2`. All loads precede all
 stores, so `in == out` is allowed. -/
-def emitCFused (R1 R2 vlc : Nat) (fwd : Bool) : String := Id.run do
+def emitCFused (R1 R2 vlc : Nat) (fwd : Bool) (mem : Bool := false) : String := Id.run do
   let t : CTarget := ⟨vlc⟩
   let ty := t.ty
   let p := t.pre
@@ -257,25 +396,32 @@ def emitCFused (R1 R2 vlc : Nat) (fwd : Bool) : String := Id.run do
   let k1 := butterflyK fwd R1 false
   let k2 := butterflyK fwd R2 true
   let tw := passTwiddles (Trig.cosSin2PiTable N) fwd N R2 R1
-  let mut ls : List String := [s!"static void {cfusedName R1 R2 vlc fwd}(const double *in, double *out) \{"]
-  -- pass 1: lanes j = jb·VLc + l; input r of butterfly j is in[j + r·R2]
-  let mut y : Array (Array String) := #[]
+  let mut ls : List String :=
+    if mem then [s!"static void {ctwoName R1 R2 vlc fwd}(const double *in, double *mid, double *out) \{"]
+    else [s!"static void {cfusedName R1 R2 vlc fwd}(const double *in, double *out) \{"]
+  -- pass 1: lanes j = jb·VLc + l; input r of butterfly j is in[j + r·R2]. Each block is
+  -- loaded, transformed and transposed in turn, to keep few vectors live.
+  -- Pass 2 input r of butterfly k is pass-1 output k of butterfly r.
+  let mut X : Array (Array String) := Array.replicate (R1 / vlc) (Array.replicate R2 "")
   for jb in [0:R2 / vlc] do
     for r in [0:R1] do
       ls := ls ++ [s!"  const {ty} x{jb}_{r} = {p}_loadu_pd(in + {2 * (jb * vlc + r * R2)});"]
-  for jb in [0:R2 / vlc] do
     let (lines, outs) := k1.instC t "  " s!"p{jb}_" fun r => s!"x{jb}_{r}"
     ls := ls ++ lines.toList
-    y := y.push outs
-  -- pass 2 input r of butterfly k is pass-1 output k of butterfly r
-  let mut X : Array (Array String) := Array.replicate (R1 / vlc) (Array.replicate R2 "")
-  for kb in [0:R1 / vlc] do
-    for rb in [0:R2 / vlc] do
-      let rows := (Array.range vlc).map fun l => (y[rb]!)[kb * vlc + l]!
+    let rb := jb
+    for kb in [0:R1 / vlc] do
+      let rows := (Array.range vlc).map fun l => outs[kb * vlc + l]!
       let (decls, cols) := ctranspose t "  " s!"c{kb}_{rb}" rows
       ls := ls ++ decls
       for m in [0:vlc] do
-        X := X.set! kb ((X[kb]!).set! (rb * vlc + m) cols[m]!)
+        if mem then
+          -- pass-2 input (kb, r) is stored at mid[kb·VLc + r·R1] (the Stockham position)
+          ls := ls ++ [s!"  {p}_storeu_pd(mid + {2 * (kb * vlc + (rb * vlc + m) * R1)}, {cols[m]!});"]
+          X := X.set! kb ((X[kb]!).set! (rb * vlc + m) s!"m{kb}_{rb * vlc + m}")
+        else
+          X := X.set! kb ((X[kb]!).set! (rb * vlc + m) cols[m]!)
+  if mem then
+    ls := ls ++ ["  __asm__ volatile(\"\" ::: \"memory\");"]
   -- pass 2: lanes k = kb·VLc + l, twiddle (r, k) of the table of pass 1 (ns = R1)
   for kb in [0:R1 / vlc] do
     for r in [1:R2] do
@@ -283,6 +429,9 @@ def emitCFused (R1 R2 vlc : Nat) (fwd : Bool) : String := Id.run do
         let kk := kb * vlc + l
         [floatCLit tw[2 * (r - 1) * R1 + kk]!, floatCLit tw[(2 * (r - 1) + 1) * R1 + kk]!]
       ls := ls ++ [s!"  const {ty} w{kb}_{r} = {p}_setr_pd({String.intercalate ", " lits});"]
+    if mem then
+      for r in [0:R2] do
+        ls := ls ++ [s!"  const {ty} m{kb}_{r} = {p}_loadu_pd(mid + {2 * (kb * vlc + r * R1)});"]
     let bind (i : Nat) : String := if i < R2 then (X[kb]!)[i]! else s!"w{kb}_{i - R2 + 1}"
     let (lines, outs) := k2.instC t "  " s!"q{kb}_" bind
     ls := ls ++ lines.toList
@@ -300,6 +449,12 @@ def cfusedSet : List (Nat × Nat × Nat) :=
   [(2, 2, 2), (2, 4, 2), (4, 2, 2), (4, 4, 2), (4, 4, 4), (4, 8, 4), (8, 4, 4), (8, 8, 4),
    (4, 16, 4), (16, 4, 4), (8, 16, 4), (16, 8, 4)]
 
+/-- `(R1, R2, VLc)` of the interleaved two-pass transforms: as `emitCFused`, with the pass-1
+results stored to memory (`mem := true`) because they do not fit in registers. -/
+def ctwoSet : List (Nat × Nat × Nat) :=
+  [(8, 16, 4), (16, 8, 4), (4, 32, 4), (32, 4, 4), (16, 16, 4), (8, 32, 4), (32, 8, 4),
+   (16, 32, 4), (32, 16, 4), (32, 32, 4)]
+
 /-- The interleaved fused kernels and their lookup function (appended after `emitKernels`). -/
 def emitCFusedKernels (xs : List (Nat × Nat × Nat) := cfusedSet) : String := Id.run do
   let mut s := ""
@@ -308,6 +463,12 @@ def emitCFusedKernels (xs : List (Nat × Nat × Nat) := cfusedSet) : String := I
   s := s ++ joinLines (["lf_cfused_fn lf_get_cfused(int R1, int R2, int vlc, int fwd) {"] ++
       ([true, false].flatMap fun fwd => xs.map fun (R1, R2, vlc) =>
         s!"  if (R1 == {R1} && R2 == {R2} && vlc == {vlc} && fwd == {if fwd then 1 else 0}) return {cfusedName R1 R2 vlc fwd};") ++
+      ["  return 0;", "}", ""])
+  for fwd in [true, false] do
+    for (R1, R2, vlc) in ctwoSet do s := s ++ emitCFused R1 R2 vlc fwd (mem := true)
+  s := s ++ joinLines (["lf_ctwo_fn lf_get_ctwo(int R1, int R2, int vlc, int fwd) {"] ++
+      ([true, false].flatMap fun fwd => ctwoSet.map fun (R1, R2, vlc) =>
+        s!"  if (R1 == {R1} && R2 == {R2} && vlc == {vlc} && fwd == {if fwd then 1 else 0}) return {ctwoName R1 R2 vlc fwd};") ++
       ["  return 0;", "}", ""])
   return s
 

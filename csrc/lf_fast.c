@@ -19,6 +19,7 @@ struct lf_plan {
      /* LF_FUSED, LF_CFUSED */
      lf_fused_fn fused;
      lf_cfused_fn cfused;
+     lf_ctwo_fn ctwo;
      /* LF_STOCKHAM */
      lf_first_fn first;
      lf_mid_fn mid[LF_MAXPASS];
@@ -76,11 +77,13 @@ int lf_mode_vl(size_t N, int fwd, int s, const int *R, int mode)
      static const int vls[] = { 8, 4 };
      if (s < 1 || s > LF_MAXPASS) return 0;
      if (s == 1) return (mode == LF_STOCKHAM && (size_t)R[0] == N && (N == 1 || lf_get_small((int)N, fwd))) ? 1 : 0;
-     if (mode == LF_CFUSED) {
+     if (mode == LF_CFUSED || mode == LF_CTWO) {
           static const int vlcs[] = { 4, 2 };
           if (s != 2 || (size_t)R[0] * (size_t)R[1] != N) return 0;
           for (int i = 0; i < 2; ++i)
-               if (R[0] % vlcs[i] == 0 && R[1] % vlcs[i] == 0 && lf_get_cfused(R[0], R[1], vlcs[i], fwd))
+               if (R[0] % vlcs[i] == 0 && R[1] % vlcs[i] == 0
+                   && (mode == LF_CFUSED ? (void *)lf_get_cfused(R[0], R[1], vlcs[i], fwd)
+                                         : (void *)lf_get_ctwo(R[0], R[1], vlcs[i], fwd)))
                     return vlcs[i];
           return 0;
      }
@@ -125,6 +128,11 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
      for (int t = 1; t <= s; ++t) nst[t] = nst[t - 1] * (size_t)R[t - 1];
      memcpy(p->nst, nst, sizeof nst);
      if (mode == LF_CFUSED) { p->cfused = lf_get_cfused(R[0], R[1], vl, fwd); return p; }
+     if (mode == LF_CTWO) {
+          p->ctwo = lf_get_ctwo(R[0], R[1], vl, fwd);
+          p->buf = aligned_alloc(64, 2 * N * sizeof(double));
+          return p;
+     }
      if (mode == LF_FUSED) p->fused = lf_get_fused(R[0], R[1], vl, fwd);
      else if (mode == LF_STOCKHAM) {
           p->first = lf_get_first(R[0], vl, fwd);
@@ -172,6 +180,7 @@ void lf_execute(const lf_plan *p, const double *in, double *out)
           return;
      }
      if (p->mode == LF_CFUSED) { p->cfused(in, out); return; }
+     if (p->mode == LF_CTWO) { p->ctwo(in, in == out ? p->buf : out, out); return; }
      if (p->mode == LF_FUSED) { p->fused(in, out, p->tw); return; }
      if (p->mode == LF_INPLACE) {
           const int s = p->s, T = p->T;

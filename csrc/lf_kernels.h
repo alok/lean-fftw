@@ -34,6 +34,10 @@ lf_ditlast_fn lf_get_ditlast(int R, int vl, int fwd);
    constants), in == out allowed */
 typedef void (*lf_cfused_fn)(const double *in, double *out);
 lf_cfused_fn lf_get_cfused(int R1, int R2, int vlc, int fwd);
+/* as lf_cfused_fn with the pass-1 results stored to mid (N complex; mid may equal out but
+   not in) */
+typedef void (*lf_ctwo_fn)(const double *in, double *mid, double *out);
+lf_ctwo_fn lf_get_ctwo(int R1, int R2, int vlc, int fwd);
 
 lf_fused_fn lf_get_fused(int R1, int R2, int vl, int fwd);
 lf_first_fn lf_get_first(int R, int vl, int fwd);

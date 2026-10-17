@@ -102,3 +102,57 @@ in and out of place. Commands: `test_fast 14`, `test_fast -1 18`.
 
 Quick timings (µs, i2 from the 3-run quick protocol → i4 single runs): N=32768 84.3 → 81.0; 65536 225 → 218; 131072 657 → 538;
 262144 1543 → 1350.
+
+## Hardware change after i4
+
+The container was restarted after i4 and now runs on a different host CPU: Intel Xeon
+model 85 stepping 7 (Cascade Lake), 2.8 GHz, 32 KB L1d, 1 MB L2 per core, 33 MB L3, AVX-512
+(i0–i4 were developed on a Sapphire Rapids host, `results/i0-baseline/meta.json`). All
+comparisons below are within one machine; the protocol run re-measures every iteration and
+every competitor together. FFTW wisdom was regenerated for this CPU.
+
+Quick run `clx-quick1` (2 interleaved runs, all 18 sizes): geometric-mean time lean-i4
+1.503 µs, FFTW best of MEASURE/PATIENT 1.794 µs (ratio 0.84), MKL 2.464 µs. Weakest sizes:
+N = 256 (1.30× FFTW), 512 (1.07×), 262144 (0.98×).
+
+## i5: interleaved two-pass kernels and a better vectorizer (commit below)
+
+Hypotheses:
+
+1. N = 128…512 lose because the split-format passes pay a deinterleave/reinterleave and a
+   transpose; the whole-transform interleaved kernels of i3 do not fit in registers beyond
+   N = 128.
+2. On this CPU (shuffles and 512-bit FMAs share port 5) the interleaved kernels' shuffle
+   count matters: the 256-point kernel issued 596 `shuffle_pd`, mostly from pairing
+   operands of the scalar kernel lane by lane in an unlucky order.
+3. Loading every block's inputs before the first butterfly kept 64 vectors live (327 stack
+   spills/reloads in the 256-point kernel).
+
+Changes:
+
+* `LF_CTWO` (`emitCFused … (mem := true)`): the i3 kernel with the pass-1 results stored to
+  memory after each block's transposes, so N = R1·R2 up to 32·32 runs as two interleaved
+  passes with constant twiddles.
+* Vectorizer (`Interleave.lean`): operand orders are chosen by a lookahead cost estimate
+  (`vcost`, depth 3); a pair may be built in the opposite lane order and exchanged with one
+  shuffle; a bottom-up SLP plan (`slpPairs`) pairs each scalar operation with the operation
+  on the partner lane before code is generated; `vsplit` reuses lanes already present.
+  Shuffles in the 256-point kernel: 596 → 368 (248 after the compiler folds shuffles of
+  constants), arithmetic vector operations 1016 → 792.
+* Per-block emission order: each block is loaded, transformed and transposed in turn.
+  Stack spills in the 256-point kernel: 327 → 32.
+
+Tried and removed: interleaved Stockham passes for N ≥ 512 (`LF_CSTOCK`, every pass a loop
+over interleaved twiddled kernels with a duplicated twiddle table). With the per-butterfly
+`j mod ns` removed it was still slower than the in-place split schedule (N = 1024: 2088 ns
+vs 1778 ns; 4096: 11.5 µs vs 9.9 µs), likely from the three live arrays and power-of-two
+strides; a lookahead depth of 4 in `vcost` produced more shuffles than depth 3 and took 12×
+longer to generate.
+
+Tests: `test_fast 14 18`: 3,726 plans (all enumerated plans N ≤ 16384 plus 470 blocked
+plans N = 2^15…2^18), 0 mismatches against the Lean reference; libbench2 `--verify` max
+error < 1e-14 for N = 1…2^18, forward and backward, in and out of place.
+
+Quick timings on Cascade Lake (ns; i4 from `clx-quick1`, i5 from `prof_fast`, so only
+indicative): N=32 34.6 → 27.2; 64 63.6 → 52.9; 128 149 → 123; 256 440 → 275;
+512 819 → 754.
