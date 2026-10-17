@@ -199,3 +199,57 @@ The protocol's median of 10 interleaved runs is what handles it.
 Tests: `test_fast 14 18`: 3,726 plans, 0 mismatches against the Lean reference;
 libbench2 `--verify` passes for `ocf`, `icf`, `ocb`, `icb` at N = 1…2^18 (76 problems), max
 L2 error 4.8e-16.
+
+## Hardware change after i6
+
+The container was re-provisioned on Sapphire Rapids again (model 207, 2.1 GHz, L2 2 MiB),
+the CPU i0–i4 were developed on. Every binary still runs; i7 was developed and measured
+here (protocol amendment 3).
+
+## i7: verified optimizations (commit 4f4e8b2)
+
+Two changes, each with a proof that it changes nothing but speed.
+
+**Tan-factored twiddle rotations (fast engine).** Comparing operation counts with FFTW's
+FMA codelets showed that the radix-16 and radix-32 kernels had 8% and 15% more operations
+(156 vs 144 and 428 vs 372; radix 2–8 already matched). The difference came from the
+twiddle rotations by angles that are not multiples of π/4. Each one cost two
+multiplications and two fused operations, and the multiplications could not fuse into
+the butterfly additions that consume them. The generator now writes the rotation of
+`a + ib` by `θ` as `cos θ · (a − tan θ · b) + i · cos θ · (b + tan θ · a)`, with a new
+exact constant `tan θ` (`Cst.tan`, binary64 value from the same integer trigonometry).
+That is one fused operation per part, and FMA contraction folds the product by `cos θ`
+into the next additions. Counts (additions, multiplications, fused): n16 (116, 8, 32) →
+(100, 0, 48); n32 (292, 40, 96) → (212, 0, 176); t16 (116, 38, 62) → (100, 30, 78); t32
+(292, 102, 158) → (212, 62, 238). The rotation lemma `evC_rotQ` was reproved, using
+`tan θ · cos θ = sin θ` for `0 < θ < π/4`. `butterflyK_correct` and every downstream
+theorem are unchanged and still hold for the new kernels.
+
+**`@[csimp]` executor for the generic engine.** Profiling the generic engine
+(non-power-of-two sizes and all other problem types) showed most of its time in closure
+calls, boxed complex values, allocation and the composed closures that sub-transforms
+read their input through. `Core/FastExec.lean` adds `execFloatFast`. It materializes the
+input once, reads each sub-transform at an offset and stride, and sums every output in a
+tail-recursive loop over unboxed `Float` accumulators, performing the same operations in
+the same order as `exec floatOps`. `execFloat_eq_fast : @execFloat = @execFloatFast` is
+proved with Lean core only, since the executable library does not depend on Mathlib.
+`@[csimp]` then makes the compiler use the fast version wherever `execFloat` is called.
+
+Results (protocol run on Sapphire Rapids, [RESULTS.md](RESULTS.md)):
+
+* G(i7) = 0.809 [0.795, 0.868] against FFTW's best mode. Against i6 in the same run,
+  G = 0.990 [0.949, 1.037], so **no detectable change**. The planner picks radix-16/32
+  passes mainly at the large, memory-bound sizes, and the radix 2–8 kernels it uses
+  elsewhere did not change. Single-plan timings with fixed radices were 5–30% faster at
+  some sizes, but that is within this VM's run-to-run noise.
+* Generic engine: 2.8× faster than i6 on N = 6…10368 (CI [2.5, 3.2]), still about 300×
+  slower than FFTW.
+
+Finding: on this CPU FFTW is faster than every Lean FFTW iteration for N ≥ 1024 (ratio
+1.11 for i7), unlike on Cascade Lake (0.94). The success criterion still holds because of
+the small sizes. The remaining gap is in the multi-pass schedules at mid and large N, not
+in operation counts.
+
+Tests: `test_fast 14 18`: 3,726 plans, 0 mismatches against the Lean reference; libbench2
+`--verify` passes for `ocf` at all 18 primary sizes and for `icf`, `ocb`, `icb` at 9 of
+them; bigcheck as reported in RESULTS.md.

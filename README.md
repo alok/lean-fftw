@@ -9,13 +9,14 @@ source of the test harness; Lean FFTW never links or calls it.
 ## Results
 
 * **Speed.** On the predeclared benchFFT workload (1-D complex, out of place, N = 2…2^18,
-  one core), Lean FFTW takes **0.748×** the time of FFTW's best planner mode per size, as
-  a geometric mean over the 18 sizes. The 95% CI is [0.739, 0.760], against a target of
-  ≤ 0.90. Lean FFTW is faster than FFTW at 17 of the 18 sizes and at parity at N = 2^18.
-  Most of the margin comes from small sizes; for N ≥ 1024 alone the ratio is 0.94. MKL
-  is slower than both. Planning, which is not counted, is far slower than FFTW's: Lean
-  FFTW measures every candidate plan, with no wisdom. Details:
-  [docs/RESULTS.md](docs/RESULTS.md).
+  one core), Lean FFTW takes **0.809×** the time of FFTW's best planner mode per size, as
+  a geometric mean over the 18 sizes. The 95% CI is [0.795, 0.868], against a target of
+  ≤ 0.90 (Sapphire Rapids; an earlier run on Cascade Lake gave 0.748). The whole margin
+  comes from small sizes: Lean FFTW is faster than FFTW up to N = 128, and **for N ≥ 1024
+  FFTW is 11% faster** on this CPU. MKL is slower than both. Planning, which is not
+  counted, is far slower than FFTW's: Lean FFTW measures every candidate plan and has no
+  wisdom. Sizes that are not powers of two run in the pure-Lean generic engine, which is
+  about 300× slower than FFTW. Details: [docs/RESULTS.md](docs/RESULTS.md).
 * **Accuracy.** libbench2's multiple-precision check gives an L2 error within 1.07× of
   FFTW's at every size.
 * **Tests.** FFTW's own harness (libbench2 `--verify` driven by `tests/check.pl`) passes
@@ -28,7 +29,10 @@ source of the test harness; Lean FFTW never links or calls it.
   * the spec agrees with Mathlib's `ZMod.dft`;
   * the generated butterfly kernels and the Stockham schedule compute the DFT exactly;
   * the executable binary64 reference is within an explicit bound of the exact DFT,
-    through FloatLib's IEEE model.
+    through FloatLib's IEEE model;
+  * optimizations are proved too: the generator's rewrites (FMA contraction,
+    tan-factored twiddle rotations) are covered by the kernel theorem, and the generic
+    engine's compiled code is a `@[csimp]` replacement proved equal to its specification.
 
   Details: [docs/THEOREMS.md](docs/THEOREMS.md).
 
@@ -46,7 +50,8 @@ libbench2 / check.pl (FFTW's harness)
 ```
 
 Everything outside the fast engine runs in the generic engine, which is pure Lean. Its
-algorithm is proved correct in exact arithmetic but its floating-point execution is not
+algorithm is proved correct in exact arithmetic, and the fast code the compiler runs for
+it is proved equal to that algorithm (`@[csimp]`), but its floating-point error is not
 analysed. [docs/TRUST.md](docs/TRUST.md) lists every link and how it is established.
 
 ## Layout

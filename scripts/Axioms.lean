@@ -24,3 +24,7 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.refTransform_error
 #print axioms LeanFFTW.Gen.refTransform_error_depth
 #print axioms LeanFFTW.execFloat_eq_fast
+#print axioms LeanFFTW.Fast.execArr_eq
+#print axioms LeanFFTW.exec_congr
+#print axioms LeanFFTW.Gen.ev_contract
+#print axioms LeanFFTW.Gen.evC_rotQ

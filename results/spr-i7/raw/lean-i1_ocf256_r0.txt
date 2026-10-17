@@ -1,0 +1,1 @@
+Problem: ocf256, setup: 103.01 ms, time: 280.70 ns, ``mflops'': 36480.139

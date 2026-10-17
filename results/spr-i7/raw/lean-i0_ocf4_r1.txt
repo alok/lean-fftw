@@ -1,0 +1,1 @@
+Problem: ocf4, setup: 1.56 ms, time: 3.23 ns, ``mflops'': 12393.6
