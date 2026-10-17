@@ -9,3 +9,5 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.cse_correct
 #print axioms LeanFFTW.Gen.exec_sym
 #print axioms LeanFFTW.Gen.butterflyK_correct
+#print axioms LeanFFTW.Gen.stockInv_pass
+#print axioms LeanFFTW.Gen.stockhamWith_exact
