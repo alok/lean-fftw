@@ -11,3 +11,15 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.butterflyK_correct
 #print axioms LeanFFTW.Gen.stockInv_pass
 #print axioms LeanFFTW.Gen.stockhamWith_exact
+#print axioms LeanFFTW.Gen.Kernel.eval_error
+#print axioms LeanFFTW.Gen.Kernel.eval_error_depth
+#print axioms LeanFFTW.Gen.stockhamWith_err
+#print axioms LeanFFTW.Gen.stockhamWith_error_dft
+#print axioms LeanFFTW.Gen.stockhamWith_errArith_le_depth
+#print axioms LeanFFTW.Gen.toReal_ofModel_fma_toModel_eq_roundAt
+#print axioms LeanFFTW.Gen.floatArith_stdModel
+#print axioms LeanFFTW.Gen.Kernel.eval_float_error
+#print axioms LeanFFTW.Gen.Kernel.eval_float_error_depth
+#print axioms LeanFFTW.Gen.stockhamWith_float_error_dft
+#print axioms LeanFFTW.Gen.refTransform_error
+#print axioms LeanFFTW.Gen.refTransform_error_depth
