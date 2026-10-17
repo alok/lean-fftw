@@ -43,7 +43,8 @@ split real/imaginary storage, "destroy input allowed", element type `double`.
   theorem assumes finite inputs and no overflow (stated hypotheses).
 * Planning fails (returns a null plan, `can_do` false) for unsupported problems;
   it never silently computes a different transform.
-* `n = 0` dimensions and REDFT00 of size 1 are rejected, as in FFTW.
+* As in FFTW, transform dimensions need `n ≥ 1` and REDFT00 needs `n ≥ 2`; a vector
+  dimension of size 0 is allowed and makes the problem empty (nothing is read or written).
 
 ## Accuracy
 
