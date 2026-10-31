@@ -1,0 +1,1 @@
+Problem: ocf1000, setup: 106.52 ms, time: 1.55 us, ``mflops'': 32055.797

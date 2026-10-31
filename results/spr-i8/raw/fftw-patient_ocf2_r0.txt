@@ -1,0 +1,1 @@
+Problem: ocf2, setup: 6.00 us, time: 6.69 ns, ``mflops'': 1494.1237

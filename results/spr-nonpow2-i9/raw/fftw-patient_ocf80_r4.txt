@@ -1,0 +1,1 @@
+Problem: ocf80, setup: 9.00 us, time: 62.86 ns, ``mflops'': 40227.089

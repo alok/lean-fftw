@@ -1,0 +1,1 @@
+Problem: ocf6, setup: 53.38 ms, time: 2.92 ns, ``mflops'': 26552.127

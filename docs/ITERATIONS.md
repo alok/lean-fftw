@@ -254,3 +254,70 @@ Tests: `test_fast 14 18`: 3,726 plans, 0 mismatches against the Lean reference; 
 `--verify` passes for `ocf` at all 18 primary sizes and for `icf`, `ocb`, `icb` at 9 of
 them; bigcheck 50,702 of 50,702 pass and 30 of 30 rejected; accuracy within 1.08× of
 FFTW's best mode.
+
+## i8: non-power-of-two sizes in the fast engine, with proved kernels (commit 566da8a)
+
+Until i7, every size that is not a power of two ran in the pure-Lean generic engine, about
+300× slower than FFTW. i8 runs every 1-D complex size whose prime factors are at most 13
+through the C fast engine, with generated kernels for radices 3, 5, 6, 7, 9–13 and 15 and
+whole-transform kernels for the 13-smooth sizes up to 64.
+
+**Kernels (proved).** The generic algorithm evaluates a prime-length leaf as the direct
+sum, one complex multiplication per term, and combines sub-transforms by full sums. Three
+classical algorithms replace that in the generator (`Gen/SymDFT.lean`), each with a proof
+that it denotes the DFT (`Proof/Butterfly.lean`), so `butterflyK_correct` and everything
+downstream cover the new kernels unchanged:
+
+* odd lengths pair terms `j` and `p − j`: `X_k = A_k ± i·S_k` with real cosine and sine
+  coefficients (`oddLeaf_spec`). Every constant is kept in the first quadrant and the
+  sign goes into the fused operation;
+* mixed radix factors the combination as twiddles followed by short DFTs (`symDFT_spec`);
+* coprime factors use the prime factor algorithm, with no twiddles at all
+  (`dftSum_pfa`, `pfaDFT_spec`). The generator splits `R` into prime-power blocks and
+  uses them only after a decidable check (`PfaOK`: product `R`, positive, pairwise
+  coprime), so the proof needs no number theory about the split itself.
+
+Operations per untwiddled kernel (adds + muls + fused, the direct-sum form of i7 → i8): radix 3: 20 → 12,
+5: 72 → 36, 7: 156 → 66, 11: 420 → 150, 13: 600 → 204, 6: 56 → 36, 10: 172 → 92,
+12: 144 → 96, 15: 332 → 168.
+
+**Schedule (tested).** Mixed-radix plans run as Stockham passes with a vector length
+chosen per pass (8 or 4, whichever needs fewer iterations). Where the butterfly count is
+not a multiple of the vector length, the remainder runs as one more iteration with
+AVX-512VL masked loads and stores. The first pass is vectorized for any radix: outputs are
+transposed in registers when the vector length divides `R`, and go through a small buffer
+otherwise. Sizes up to 64 use whole-transform kernels on interleaved data, one complex
+number per 128-bit vector. The planner enumerates radix orders over
+{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 32} and times them as before.
+Power-of-two plans are unchanged.
+
+Results (run of 2026-10-31, [RESULTS.md](RESULTS.md)): the non-power-of-two workload went
+from about 300× slower than FFTW to parity, G = 0.971 [0.950, 1.043] against FFTW's best
+mode (i9 binary, whose kernels are i8's). Before the masked tails and the prime factor
+algorithm, the same sizes were 1.3–1.7× FFTW; N = 1000 went 505 µs (i7) → 2.8 µs (scalar
+tails) → 1.9 µs (vector first pass) → 1.6 µs (masked tails), and N = 15 went 22 → 13 ns with
+the prime factor algorithm. The primary workload is unchanged in algorithm, but i8 measured
+G = 0.777 against i7's 0.736 in the same run: see i9.
+
+Tests: `test_fast 14 18`: 3,726 plans, 0 mismatches; `test_fast mixed 300 1000 3000 4725
+7203 10368`: 6,496 plans, 0 mismatches; accuracy within 1.08× of FFTW at the primary sizes
+and 1.11× at the secondary sizes. Axiom audit: 32 theorems, standard axioms only.
+
+## i9: 64-byte code alignment (commit 195f21c)
+
+In the i8 run, i8 took 2.47 ns at N = 2 against i7's 1.74 ns, and 2.80 vs 2.12 ns at N = 4,
+in every one of the 10 process runs. The kernel and `lf_execute` are byte-identical between
+the two builds; only their addresses differ (the generated file now has many more
+functions). Compiling the fast engine with `-falign-functions=64` and the benchmark backend
+with `-falign-functions=64 -falign-loops=64` brings N = 2 and 4 back to 1.77 and 2.12 ns
+and is neutral at the other sizes checked (8 to 1024 and the secondary sizes).
+
+Results: G(i9) = 0.750 [0.744, 0.765]; i9 / i8 = 0.965 [0.953, 0.979]. i9 is still 2%
+slower than i7 (1.020 [1.003, 1.032]), mostly at N = 8 (3.64 vs 3.38 ns), another
+sub-nanosecond placement effect that alignment did not remove. Bigcheck on i9: 50,702 of
+50,702 pass and 30 of 30 rejected.
+
+Finding: on this run, Lean FFTW is faster than FFTW for N ≥ 1024 (0.93 for i9, 0.91 for
+i7), where the i7 run of 2026-10-17 had measured 1.11 for the same i7 binary. The large-N
+schedule tuning planned for this round was therefore not needed on this evidence; the
+remaining clear power-of-two loss is N = 512 (1.11).

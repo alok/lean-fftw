@@ -1,0 +1,1 @@
+Problem: ocf8, setup: 1.28 ms, time: 9.64 ns, ``mflops'': 12449.7

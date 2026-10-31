@@ -24,6 +24,8 @@ LABELS = {
     "lean-i5": "i5  two-pass interleaved kernels, better vectorizer",
     "lean-i6": "i6  direct kernel dispatch, planning on the real arrays",
     "lean-i7": "i7  proved tan-factored twiddles: fewer ops in radix 16/32",
+    "lean-i8": "i8  proved radix 3-15 kernels: odd sizes in the fast engine",
+    "lean-i9": "i9  64-byte code alignment",
 }
 FFTW = ["fftw-measure", "fftw-patient", "fftw-exhaustive"]
 W, H = 960, 640

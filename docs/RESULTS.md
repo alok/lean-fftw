@@ -1,17 +1,143 @@
 # Results
 
-Two runs of the predeclared protocol ([BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md)) are
-reported. The machine is a cloud VM whose CPU changed when the container was
-re-provisioned (amendments 1 and 3), so each run re-measures every iteration and every
+Three runs of the predeclared protocol ([BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md))
+are reported. The machine is a cloud VM whose CPU changed when the container was
+re-provisioned (amendments 1, 3 and 4), so each run re-measures every iteration and every
 competitor on one machine, and numbers are only compared within a run.
 
-* **Current: Sapphire Rapids, i0–i7** (2026-10-17, [`results/spr-i7/`](../results/spr-i7)).
-* Earlier: Cascade Lake, i0–i6 (2026-10-17, [`results/clx-final/`](../results/clx-final)),
-  below.
+* **Current: Sapphire Rapids, i0–i9** (2026-10-31, [`results/spr-i9/`](../results/spr-i9)).
+* Earlier: Sapphire Rapids, i0–i7 (2026-10-17, [`results/spr-i7/`](../results/spr-i7)).
+* Earlier: Cascade Lake, i0–i6 (2026-10-17, [`results/clx-final/`](../results/clx-final)).
+
+A run of i0–i8 on 2026-10-31 ([`results/spr-i8/`](../results/spr-i8)) found the code
+placement regression that i9 fixes (see ITERATIONS.md) and is kept for the record.
 
 ![optimization history](../results/optimization.gif)
 
-## Current run: Sapphire Rapids
+## Current run: Sapphire Rapids, i0–i9
+
+### Setup
+
+As in the earlier Sapphire Rapids run below: the same CPU model (family 6 model 207,
+2.1 GHz, 4 vCPUs, AVX-512), every process pinned to CPU 0, one thread, workload `ocf<N>`
+for N = 2…2^18, 14 implementations × 18 sizes × 10 process runs in shuffled order (2,520
+runs, all exit 0), median over runs of libbench2's minimum of 8 timings. FFTW used the
+wisdom generated per mode on this CPU model for the i7 run (amendment 4).
+
+### Primary result
+
+**G = time(Lean FFTW i9) / time(FFTW, best mode per size), geometric mean over the 18
+sizes: 0.750, 95% bootstrap CI [0.744, 0.765].** The success criterion (upper end of the
+CI ≤ 0.90) is met. Geometric-mean times: Lean FFTW i9 0.91 µs, FFTW best mode 1.22 µs,
+MKL 1.63 µs.
+
+| N | Lean i9 | FFTW best | ratio | | N | Lean i9 | FFTW best | ratio |
+|---|---|---|---|---|---|---|---|---|
+| 2 | 1.77 ns | 6.27 ns | 0.28 | | 1024 | 1.16 µs | 1.20 µs | 0.97 |
+| 4 | 2.12 ns | 6.70 ns | 0.32 | | 2048 | 2.81 µs | 3.19 µs | 0.88 |
+| 8 | 3.64 ns | 7.47 ns | 0.49 | | 4096 | 7.73 µs | 8.17 µs | 0.95 |
+| 16 | 8.00 ns | 14.7 ns | 0.54 | | 8192 | 17.0 µs | 17.1 µs | 1.00 |
+| 32 | 19.5 ns | 31.9 ns | 0.61 | | 16384 | 38.1 µs | 38.1 µs | 1.00 |
+| 64 | 43.3 ns | 59.1 ns | 0.73 | | 32768 | 78.9 µs | 95.3 µs | 0.83 |
+| 128 | 97.5 ns | 109 ns | 0.89 | | 65536 | 225 µs | 212 µs | 1.06 |
+| 256 | 224 ns | 222 ns | 1.01 | | 131072 | 526 µs | 580 µs | 0.91 |
+| 512 | 502 ns | 451 ns | **1.11** | | 262144 | 1.22 ms | 1.47 ms | 0.83 |
+
+For N ≥ 1024 alone the geometric-mean ratio is **0.93**: in this run Lean FFTW is
+faster than FFTW at large sizes too, unlike in the i7 run of 2026-10-17 (1.11). The power-of-two
+code did not change between i7 and i9, and i7 measures 0.91 for N ≥ 1024 in this run, so
+the difference between the two runs is the machine, not the code. The clearest remaining loss is N = 512 (1.11).
+
+### By iteration
+
+G against FFTW's best mode, from the same run:
+
+| Iteration | G | 95% CI | N ≥ 1024 only |
+|---|---|---|---|
+| i0 baseline | 1.207 | [1.201, 1.236] | 1.446 |
+| i1 fused small transforms, in-place schedule | 0.955 | [0.949, 0.976] | 0.971 |
+| i2 FMA contraction | 0.963 | [0.956, 0.982] | 0.973 |
+| i3 interleaved kernels for small N | 0.859 | [0.852, 0.876] | 0.981 |
+| i4 measuring planner, cache blocking | 0.833 | [0.828, 0.851] | 0.927 |
+| i5 two-pass interleaved kernels, vectorizer | 0.808 | [0.800, 0.825] | 0.936 |
+| i6 direct kernel dispatch, planning on the real arrays | 0.759 | [0.753, 0.773] | 0.928 |
+| i7 proved tan-factored twiddles | 0.736 | [0.731, 0.752] | 0.910 |
+| i8 proved radix 3–15 kernels, odd sizes in the fast engine | 0.777 | [0.770, 0.792] | 0.934 |
+| **i9** 64-byte code alignment | **0.750** | **[0.744, 0.765]** | **0.932** |
+| *for reference:* MKL | 1.345 | [1.337, 1.371] | 1.222 |
+| FFTW MEASURE only | 1.093 | [1.085, 1.117] | 1.140 |
+| FFTW PATIENT only | 1.012 | [1.001, 1.032] | 1.008 |
+| FFTW EXHAUSTIVE only | 1.046 | [1.039, 1.068] | 1.044 |
+
+i8 and i9 change nothing for powers of two except code layout, so the primary workload
+was not expected to move. It moved twice anyway. i8 was 0.7 ns slower than i7 at N = 2 and 4
+(2.47 vs 1.74 ns at N = 2) with byte-identical kernels and dispatch code at different
+addresses; i9 aligns functions and loops to 64 bytes and gets those sizes back. **i9 is
+still 2% slower than i7 overall (i9/i7 = 1.020, CI [1.003, 1.032])**, mostly at N = 8
+(3.64 vs 3.38 ns), which is again a code-placement effect of a fraction of a nanosecond.
+So the best primary-workload result in this run is i7's 0.736, and i9's 0.750 is the
+current library.
+
+Planning time (medians, not part of G): Lean FFTW 0.015 s at N = 2, 0.35 s at N = 1024
+and 22 s at N = 2^18; FFTW from wisdom a few ms or less.
+
+### Accuracy
+
+libbench2 `--accuracy` (10 random inputs per size), forward relative L2 error, measured on
+the i8 binary (i9 has the same kernels and plans, compiled with different alignment).
+Data: [`results/spr-i9/accuracy.json`](../results/spr-i9/accuracy.json).
+
+| N | Lean i8/i9 | FFTW (measure / patient / exhaustive) |
+|---|---|---|
+| 8 | 6.3e-17 | 7.1e-17 / 7.1e-17 / 7.1e-17 |
+| 64 | 1.2e-16 | 1.4e-16 / 1.4e-16 / 1.4e-16 |
+| 1024 | 1.9e-16 | 1.9e-16 / 1.8e-16 / 1.8e-16 |
+| 16384 | 2.3e-16 | 2.2e-16 / 2.3e-16 / 2.3e-16 |
+| 262144 | 2.8e-16 | 2.7e-16 / 2.8e-16 / 2.8e-16 |
+
+At every size the error is at most 1.08× the lowest of the three FFTW modes (worst at
+N = 8192); the protocol's limit is 2×.
+
+### Non-power-of-two sizes (now in the fast engine)
+
+Secondary workload, `ocf<N>` for N = 6, 15, 80, 210, 1000, 4725, 10368: 5 process runs
+each, same method, now against all three FFTW modes
+([`results/spr-nonpow2-i9/`](../results/spr-nonpow2-i9)). In i7 these sizes ran in the
+pure-Lean generic engine; in i9 they run in the C fast engine with the proved radix-3–15
+kernels.
+
+| N | Lean i7 | Lean i9 | FFTW MEASURE | PATIENT | EXHAUSTIVE | i9 / FFTW best |
+|---|---|---|---|---|---|---|
+| 6 | 2.81 µs | 2.87 ns | 6.46 ns | 6.68 ns | 6.69 ns | 0.44 |
+| 15 | 6.30 µs | 12.7 ns | 17.1 ns | 16.9 ns | 17.1 ns | 0.75 |
+| 80 | 39.8 µs | 91.5 ns | 64.4 ns | 64.7 ns | 69.7 ns | **1.42** |
+| 210 | 96.3 µs | 379 ns | 368 ns | 385 ns | 349 ns | 1.08 |
+| 1000 | 505 µs | 1.56 µs | 1.59 µs | 1.45 µs | 1.34 µs | 1.16 |
+| 4725 | 2.50 ms | 19.3 µs | 17.2 µs | 17.4 µs | 16.7 µs | 1.16 |
+| 10368 | 6.98 ms | 23.4 µs | 24.4 µs | 19.9 µs | 22.5 µs | 1.18 |
+
+**G(i9 / FFTW best mode) = 0.971, 95% CI [0.950, 1.043]**: parity on this workload,
+where i7 was about 300× slower than FFTW. i9 is 360× faster than i7 here (geometric mean).
+Against FFTW MEASURE alone, G = 0.908 [0.829, 0.963]. Lean FFTW wins at the sizes that
+are single generated kernels (6, 15) and loses by 8–18% at the multi-pass sizes, most at
+N = 80 (1.42). Accuracy at these sizes is within 1.11× of FFTW
+([`accuracy.json`](../results/spr-nonpow2-i9/accuracy.json)).
+
+### Correctness of the benchmarked build (i9)
+
+* Differential test, bit for bit against `refTransform`: `test_fast 14 18` (every plan of
+  every power of two to 2^14, blocked plans to 2^18), 3,726 plans, 0 mismatches; `test_fast
+  mixed 300 1000 3000 4725 7203 10368` (every plan of every 13-smooth size to 300 that is
+  not a power of two, plus the listed sizes), 6,496 plans, 0 mismatches. Both on the i8
+  kernels, which i9 compiles unchanged; i9 itself was re-checked with `test_fast 12` and
+  `test_fast mixed 64 1000` (2,422 plans, 0 mismatches).
+* libbench2 `--verify` for `ocf`, `icf`, `ocb`, `icb` at 15 non-power-of-two sizes from 6
+  to 10368 (60 problems) on i9: all pass.
+* FFTW's bigcheck enumeration (`check.pl -a`) on i9: 50,702 of 50,702 problems pass
+  `--verify`, and all 30 problems that must be rejected are rejected
+  ([`results/bigcheck-i9/`](../results/bigcheck-i9)).
+
+## Earlier run: Sapphire Rapids, i0–i7
 
 ### Setup
 

@@ -1,0 +1,1 @@
+Problem: ocf512, setup: 261.21 ms, time: 553.68 ns, ``mflops'': 41612.452
