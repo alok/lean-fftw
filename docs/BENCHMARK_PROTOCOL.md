@@ -99,3 +99,10 @@ commit, environment variables affecting threading (`MKL_THREADING_LAYER`,
    new run re-measures every iteration binary (i0–i7), FFTW in all three modes with wisdom
    generated from scratch on this CPU, and MKL, in one interleaved run on one machine. The
    Cascade Lake run (`results/clx-final`) stays in the repository as the earlier result.
+4. *2026-10-31, before measuring i8.* Same CPU model as amendment 3 (Sapphire Rapids,
+   family 6 model 207, 2.1 GHz). No protocol rule changes: a new interleaved run
+   re-measures i0–i8, FFTW in all three modes and MKL. FFTW reuses the wisdom files that
+   were generated for each mode on this CPU model for the i7 run
+   (`/root/results/wisdom-spr-i7`). The secondary non-power-of-two workload, now that those
+   sizes run in the fast engine, is measured against FFTW in all three modes instead of
+   MEASURE only.
