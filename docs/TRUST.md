@@ -3,9 +3,9 @@
 What a user of Lean FFTW relies on, split into what is proved in Lean, what is
 established by testing, and what is trusted as is.
 
-## The chain for the fast engine (1-D complex, N = 2^k)
+## The chain for the fast engine (1-D complex, N = 2^k, or N > 1 whose prime factors are all at most 13)
 
-This is the path every benchmark size takes.
+This is the path every benchmark size takes, primary and secondary.
 
 | Link | From | To | How it is established |
 |---|---|---|---|
@@ -30,7 +30,19 @@ N = 2^k from 1 to 2^14, both directions, in place and out of place, and compares
 output with `refTransform` (called through the Lean FFI) using `memcmp`. For N = 2^15 to
 2^18 it checks the cache-blocked plans: three plans spread over the enumeration, for each
 block parameter, in both directions and both placements (`test_fast 14 18`: 3,726 plans,
-0 failures, recorded per iteration in [ITERATIONS.md](ITERATIONS.md)). libbench2
+0 failures, recorded per iteration in [ITERATIONS.md](ITERATIONS.md)). `test_fast mixed
+MAXN [sizes…]` does the same for every 13-smooth size that is not a power of two up to
+MAXN and for the listed sizes: every plan the planner can enumerate, both directions,
+`memcmp` against `refTransform` with the same radices.
+
+What the printing adds on top of the proved kernels, and what these tests therefore have
+to catch, is: the SIMD instructions for each kernel operation (one lane per butterfly,
+or for the whole-transform kernels of sizes up to 64 one complex number per 128-bit
+vector with `fmaddsub`-style pairs); the deinterleaving and transposition shuffles; and,
+for sizes whose butterfly count is not a multiple of the vector length, one extra loop
+iteration with masked loads and stores (inactive lanes are loaded as zero and never
+stored). Every lane computes the same operations as the scalar kernel, so the masked
+iteration is bit-identical too, and the tests include sizes where it runs in every pass. libbench2
 `--verify` additionally checks the plan the planner actually picks, for N = 1 to 2^18.
 A test is evidence for the inputs it runs,
 not a proof for all inputs, and that is the remaining gap between the proofs and the
@@ -42,7 +54,7 @@ hypothesis of the error theorems, not proved.
 
 ## The generic engine (everything else)
 
-Non-power-of-two sizes, r2c/c2r, all r2r kinds, multi-dimensional, vector and strided
+1-D complex sizes with a prime factor above 13, r2c/c2r, all r2r kinds, multi-dimensional, vector and strided
 problems run in the generic engine, which is pure Lean (`Core/Alg.lean`,
 `Core/Problem.lean`, `Core/FloatOps.lean`, `Core/FastExec.lean`).
 

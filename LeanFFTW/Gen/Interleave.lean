@@ -33,12 +33,15 @@ namespace LeanFFTW.Gen
 
 open Std
 
-/-- Vector type for `VLc` complex numbers (`VLc = 2`: AVX2 `__m256d`; `VLc = 4`: AVX-512). -/
+/-- Vector type for `VLc` complex numbers (`VLc = 1`: SSE2 `__m128d` with the FMA3 forms;
+`VLc = 2`: AVX2 `__m256d`; `VLc = 4`: AVX-512). -/
 structure CTarget where
   vlc : Nat
 
-def CTarget.ty (t : CTarget) : String := if t.vlc == 4 then "__m512d" else "__m256d"
-def CTarget.pre (t : CTarget) : String := if t.vlc == 4 then "_mm512" else "_mm256"
+def CTarget.ty (t : CTarget) : String :=
+  if t.vlc == 4 then "__m512d" else if t.vlc == 1 then "__m128d" else "__m256d"
+def CTarget.pre (t : CTarget) : String :=
+  if t.vlc == 4 then "_mm512" else if t.vlc == 1 then "_mm" else "_mm256"
 
 /-- A constant vector with lanes `lo, hi` in every complex number. -/
 def CTarget.setPair (t : CTarget) (lo hi : String) : String :=
@@ -364,6 +367,23 @@ def Kernel.instC (k : Kernel) (t : CTarget) (ind pfx : String) (bind : Nat → S
   return (st.lines, outs)
 
 def cfusedName (R1 R2 vlc : Nat) (fwd : Bool) : String := s!"lf_cfused_{R1}x{R2}_c{vlc}_{dirTag fwd}"
+def csmallName (N : Nat) (fwd : Bool) : String := s!"lf_csmall_n{N}_{dirTag fwd}"
+
+/-- A whole small transform (one untwiddled butterfly, as `emitSmall`) on interleaved
+`__m128d` vectors of one complex number each: the kernel's real and imaginary operations
+are paired lane-wise by `Kernel.instC`. All loads precede all stores (`in == out` allowed). -/
+def emitCSmall (N : Nat) (fwd : Bool) : String := Id.run do
+  let t : CTarget := ⟨1⟩
+  let k := butterflyK fwd N false
+  let mut ls : List String := [s!"static void {csmallName N fwd}(const double *in, double *out) \{"]
+  for r in [0:N] do
+    ls := ls ++ [s!"  const __m128d x{r} = _mm_loadu_pd(in + {2 * r});"]
+  let (lines, outs) := k.instC t "  " "" fun r => s!"x{r}"
+  ls := ls ++ lines.toList
+  for r in [0:N] do
+    ls := ls ++ [s!"  _mm_storeu_pd(out + {2 * r}, {outs[r]!});"]
+  ls := ls ++ ["}", ""]
+  return joinLines ls
 def ctwoName (R1 R2 vlc : Nat) (fwd : Bool) : String := s!"lf_ctwo_{R1}x{R2}_c{vlc}_{dirTag fwd}"
 
 /-- Transpose a `VLc × VLc` block of complex numbers (rows are vectors). -/
@@ -455,9 +475,21 @@ def ctwoSet : List (Nat × Nat × Nat) :=
   [(8, 16, 4), (16, 8, 4), (4, 32, 4), (32, 4, 4), (16, 16, 4), (8, 32, 4), (32, 8, 4),
    (16, 32, 4), (32, 16, 4), (32, 32, 4)]
 
+/-- Sizes of the interleaved small transforms: the 13-smooth sizes up to 64 that are not
+powers of two. -/
+def csmallSet : List Nat :=
+  (List.range 65).filter fun n => n ≥ 3 && n &&& (n - 1) != 0 &&
+    (primeFactors n).all fun f => f ≤ 13
+
 /-- The interleaved fused kernels and their lookup function (appended after `emitKernels`). -/
 def emitCFusedKernels (xs : List (Nat × Nat × Nat) := cfusedSet) : String := Id.run do
   let mut s := ""
+  for fwd in [true, false] do
+    for N in csmallSet do s := s ++ emitCSmall N fwd
+  s := s ++ joinLines (["lf_small_fn lf_get_csmall(int N, int fwd) {"] ++
+      ([true, false].flatMap fun fwd => csmallSet.map fun N =>
+        s!"  if (N == {N} && fwd == {if fwd then 1 else 0}) return {csmallName N fwd};") ++
+      ["  return 0;", "}", ""])
   for fwd in [true, false] do
     for (R1, R2, vlc) in xs do s := s ++ emitCFused R1 R2 vlc fwd
   s := s ++ joinLines (["lf_cfused_fn lf_get_cfused(int R1, int R2, int vlc, int fwd) {"] ++

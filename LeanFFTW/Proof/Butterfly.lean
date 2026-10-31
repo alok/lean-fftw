@@ -602,6 +602,614 @@ theorem il_contract {m : ℕ} : ∀ {e : SExpr}, e.InputsLt m → e.contract.Inp
 
 end Contract
 
+/-! ## Paired odd-length leaves and factored mixed-radix butterflies (`symDFT`) -/
+
+/-- The sign of a flag. -/
+noncomputable def sgn (b : Bool) : ℝ := if b then -1 else 1
+
+/-! ### Constants -/
+
+theorem cosH_spec {m n : ℕ} (hn : 0 < n) (h2 : 2 * m ≤ n) :
+    sgn (cosH m n).1 * (cosH m n).2.toReal = Real.cos (2 * Real.pi * m / n) := by
+  have hn' : (n : ℝ) ≠ 0 := by exact_mod_cast hn.ne'
+  unfold cosH
+  split_ifs with h4
+  · simp [sgn, Cst.toReal]
+  · simp only [sgn, ite_true, Cst.toReal]
+    rw [Nat.cast_sub h2]
+    push_cast
+    have : 2 * Real.pi * ((n : ℝ) - 2 * m) / (2 * n) = Real.pi - 2 * Real.pi * m / n := by
+      field_simp
+    rw [this, Real.cos_pi_sub]; ring
+
+theorem cosQ_spec {m n : ℕ} (hm : m < n) :
+    sgn (cosQ m n).1 * (cosQ m n).2.toReal = Real.cos (2 * Real.pi * m / n) := by
+  have hn : 0 < n := by omega
+  have hn' : (n : ℝ) ≠ 0 := by exact_mod_cast hn.ne'
+  unfold cosQ
+  split_ifs with h2
+  · exact cosH_spec hn h2
+  · rw [cosH_spec hn (by omega), Nat.cast_sub hm.le]
+    have : 2 * Real.pi * ((n : ℝ) - m) / n = 2 * Real.pi - 2 * Real.pi * m / n := by
+      field_simp
+    rw [this, Real.cos_two_pi_sub]
+
+theorem sinH_spec {m n : ℕ} (hn : 0 < n) (h2 : 2 * m ≤ n) :
+    (sinH m n).toReal = Real.sin (2 * Real.pi * m / n) := by
+  have hn' : (n : ℝ) ≠ 0 := by exact_mod_cast hn.ne'
+  unfold sinH
+  split_ifs with h4
+  · simp [Cst.toReal]
+  · simp only [Cst.toReal]
+    rw [Nat.cast_sub h2]
+    push_cast
+    have : 2 * Real.pi * ((n : ℝ) - 2 * m) / (2 * n) = Real.pi - 2 * Real.pi * m / n := by
+      field_simp
+    rw [this, Real.sin_pi_sub]
+
+theorem sinQ_spec {m n : ℕ} (hm : m < n) :
+    sgn (sinQ m n).1 * (sinQ m n).2.toReal = Real.sin (2 * Real.pi * m / n) := by
+  have hn : 0 < n := by omega
+  have hn' : (n : ℝ) ≠ 0 := by exact_mod_cast hn.ne'
+  unfold sinQ
+  split_ifs with h2
+  · simp only [sgn, Bool.false_eq_true, ite_false, one_mul]; exact sinH_spec hn h2
+  · simp only [sgn, ite_true]
+    rw [sinH_spec hn (by omega), Nat.cast_sub hm.le]
+    have : 2 * Real.pi * ((n : ℝ) - m) / n = 2 * Real.pi - 2 * Real.pi * m / n := by
+      field_simp
+    rw [this, Real.sin_two_pi_sub]; ring
+
+/-! ### Fused accumulations -/
+
+open SExpr in
+theorem ev_sfma (ng : Bool) (c : Cst) (a acc : SExpr) :
+    ev env (sfma ng c a acc) = ev env acc + sgn ng * c.toReal * ev env a := by
+  unfold sfma sgn; cases ng <;> simp [ev_mkFnmaC, ev_mkFmaC] <;> ring
+
+open SExpr in
+theorem ev_smul (ng : Bool) (c : Cst) (a : SExpr) :
+    ev env (smul ng c a) = sgn ng * c.toReal * ev env a := by
+  unfold smul sgn; cases ng <;> simp [ev_mkNeg, ev_mkMulC]
+
+/-- The value of a term `±c·a`. -/
+noncomputable def tval (t : Bool × Cst × SExpr) : ℝ := sgn t.1 * t.2.1.toReal * ev env t.2.2
+
+theorem ev_lacc (ts : List (Bool × Cst × SExpr)) : ∀ init : SExpr,
+    ev env (lacc init ts) = ev env init + (ts.map (tval env)).sum := by
+  induction ts with
+  | nil => intro init; simp [lacc]
+  | cons t ts ih =>
+    intro init
+    simp only [lacc, List.foldl_cons] at ih ⊢
+    rw [ih, ev_sfma, List.map_cons, List.sum_cons, tval]; ring
+
+theorem ev_lsum (ts : List (Bool × Cst × SExpr)) :
+    ev env (lsum ts) = (ts.map (tval env)).sum := by
+  cases ts with
+  | nil => simp [lsum]
+  | cons t ts => rw [lsum, ev_lacc, ev_smul, List.map_cons, List.sum_cons, tval]
+
+theorem il_sfma (ng : Bool) (c : Cst) {a acc : SExpr} (ha : a.InputsLt m) (hacc : acc.InputsLt m) :
+    (sfma ng c a acc).InputsLt m := by
+  unfold sfma; cases ng
+  · exact il_mkFmaC c ha hacc
+  · exact il_mkFnmaC c ha hacc
+
+theorem il_smul (ng : Bool) (c : Cst) {a : SExpr} (ha : a.InputsLt m) : (smul ng c a).InputsLt m := by
+  unfold smul; cases ng
+  · exact il_mkMulC c ha
+  · exact il_mkNeg (il_mkMulC c ha)
+
+theorem il_lacc (ts : List (Bool × Cst × SExpr)) (hts : ∀ t ∈ ts, t.2.2.InputsLt m) :
+    ∀ init : SExpr, init.InputsLt m → (lacc init ts).InputsLt m := by
+  induction ts with
+  | nil => intro init h; simpa [lacc] using h
+  | cons t ts ih =>
+    intro init h
+    simp only [lacc, List.foldl_cons] at ih ⊢
+    exact ih (fun t' ht' => hts t' (List.mem_cons_of_mem _ ht')) _
+      (il_sfma _ _ (hts t (by simp)) h)
+
+theorem il_lsum (ts : List (Bool × Cst × SExpr)) (hts : ∀ t ∈ ts, t.2.2.InputsLt m) :
+    (lsum ts).InputsLt m := by
+  cases ts with
+  | nil => simp [lsum, SExpr.InputsLt]
+  | cons t ts =>
+    exact il_lacc ts (fun t' ht' => hts t' (List.mem_cons_of_mem _ ht')) _
+      (il_smul _ _ (hts t (by simp)))
+
+theorem list_sum_range (f : ℕ → ℝ) (n : ℕ) : ((List.range n).map f).sum = ∑ i ∈ range n, f i := by
+  induction n with
+  | zero => simp
+  | succ n ih => rw [List.range_succ, List.map_append, List.sum_append, ih, Finset.sum_range_succ]; simp
+
+theorem ev_foldAdd (g : ℕ → SExpr) (l : List ℕ) : ∀ init : SExpr,
+    ev env (l.foldl (fun acc i => SExpr.mkAdd acc (g i)) init) = ev env init + (l.map fun i => ev env (g i)).sum := by
+  induction l with
+  | nil => intro init; simp
+  | cons i l ih =>
+    intro init
+    rw [List.foldl_cons, ih, ev_mkAdd, List.map_cons, List.sum_cons]; ring
+
+theorem il_foldAdd (g : ℕ → SExpr) (l : List ℕ) (hg : ∀ i ∈ l, (g i).InputsLt m) : ∀ init : SExpr,
+    init.InputsLt m → (l.foldl (fun acc i => SExpr.mkAdd acc (g i)) init).InputsLt m := by
+  induction l with
+  | nil => intro init h; simpa using h
+  | cons i l ih =>
+    intro init h
+    rw [List.foldl_cons]
+    exact ih (fun i' hi' => hg i' (List.mem_cons_of_mem _ hi')) _ (il_mkAdd h (hg i (by simp)))
+
+/-! ### Twiddles in coordinates -/
+
+theorem inv_cs (c s : ℝ) (h : c ^ 2 + s ^ 2 = 1) : (⟨c, s⟩ : ℂ)⁻¹ = ⟨c, -s⟩ := by
+  have hn : Complex.normSq ⟨c, s⟩ = 1 := by rw [Complex.normSq_mk]; nlinarith
+  apply Complex.ext <;> simp [Complex.inv_re, Complex.inv_im, hn]
+
+theorem twiddle_cs (fwd : Bool) {n : ℕ} (hn : 0 < n) (q : ℕ) :
+    twiddle fwd n q = ⟨Real.cos (2 * Real.pi * (q % n : ℕ) / n),
+      sgn fwd * Real.sin (2 * Real.pi * (q % n : ℕ) / n)⟩ := by
+  rw [← twiddle_mod fwd hn q]
+  cases fwd
+  · rw [twiddle_false_eq]; simp [sgn]
+  · rw [twiddle_true_eq_inv, twiddle_false_eq, inv_cs _ _ (by rw [add_comm]; exact Real.sin_sq_add_cos_sq _)]
+    simp [sgn]
+
+theorem twiddle_pair (fwd : Bool) {n j : ℕ} (hn : 0 < n) (hj : j ≤ n) (k : ℕ) :
+    twiddle fwd n ((n - j) * k) = (twiddle fwd n (j * k))⁻¹ := by
+  have : twiddle fwd n ((n - j) * k) * twiddle fwd n (j * k) = 1 := by
+    rw [← twiddle_add, ← Nat.add_mul, Nat.sub_add_cancel hj, twiddle_mul_self fwd hn]
+  exact eq_inv_of_mul_eq_one_left this
+
+theorem twiddle_cs_sq (fwd : Bool) (θ : ℝ) : Real.cos θ ^ 2 + (sgn fwd * Real.sin θ) ^ 2 = 1 := by
+  have := Real.cos_sq_add_sin_sq θ
+  unfold sgn; cases fwd <;> simp [this]
+
+/-! ### The odd-length leaf -/
+
+/-- Pair the terms `j` and `2h + 1 - j` of a sum. -/
+theorem sum_pair (f : ℕ → ℂ) (h : ℕ) :
+    ∑ j ∈ range (2 * h + 1), f j = f 0 + ∑ i ∈ range h, (f (i + 1) + f (2 * h + 1 - (i + 1))) := by
+  rw [Finset.sum_range_succ', two_mul, Finset.sum_range_add, Finset.sum_add_distrib]
+  rw [← Finset.sum_range_reflect (fun x => f (h + x + 1)) h]
+  have : ∑ j ∈ range h, f (h + (h - 1 - j) + 1) = ∑ j ∈ range h, f (2 * h + 1 - (j + 1)) := by
+    refine Finset.sum_congr rfl (fun j hj => ?_)
+    have := Finset.mem_range.mp hj
+    congr 1; omega
+  rw [this, two_mul]; ring
+
+/-- A DFT of odd length as a sum over pairs, given the twiddles of the pairs. -/
+theorem dft_odd_pairs (fwd : Bool) {p : ℕ} (hp : p % 2 = 1) (X : ℕ → ℂ) (k : ℕ) (T : ℕ → ℂ)
+    (h1 : ∀ i < p / 2, twiddle fwd p ((i + 1) * k) = T i)
+    (h2 : ∀ i < p / 2, twiddle fwd p ((p - (i + 1)) * k) = (T i)⁻¹) :
+    dftSum fwd p X k = X 0 + ∑ i ∈ range (p / 2), (T i * X (i + 1) + (T i)⁻¹ * X (p - (i + 1))) := by
+  have hp2 : p = 2 * (p / 2) + 1 := by omega
+  unfold dftSum
+  rw [hp2, sum_pair, ← hp2]
+  have h0 : twiddle fwd p (0 * k) = 1 := by simp [twiddle]
+  rw [h0, one_mul]
+  congr 1
+  refine Finset.sum_congr rfl (fun i hi => ?_)
+  have hi' := Finset.mem_range.mp hi
+  rw [h1 i hi', h2 i hi']
+
+/-- One pair: `T x + T⁻¹ y = c (x + y) + i t (x - y)` for `T = c + i t` of modulus one. -/
+theorem pair_term (c t : ℝ) (h : c ^ 2 + t ^ 2 = 1) (x y : ℂ) :
+    (⟨c, t⟩ : ℂ) * x + (⟨c, t⟩ : ℂ)⁻¹ * y = (c : ℂ) * (x + y) + I * ((t : ℂ) * (x - y)) := by
+  rw [inv_cs c t h]
+  apply Complex.ext <;> simp <;> ring
+
+/-! ### Values of the pieces of `oddLeaf` -/
+
+section OddLeaf
+
+variable {p : ℕ} (x : ℕ → SC)
+
+/-- The angle `2π (q mod p) / p`. -/
+noncomputable def ang (p q : ℕ) : ℝ := 2 * Real.pi * ((q % p : ℕ) : ℝ) / p
+
+theorem toC_val (a b : SExpr) : (SC.val a b).toC env = evC env (a, b) := rfl
+
+theorem parts_re_im {j : ℕ} (hj : (x j).Good m) :
+    ev env (x j).parts.1 = ((x j).toC env).re ∧ ev env (x j).parts.2 = ((x j).toC env).im ∧
+      (x j).parts.1.InputsLt m ∧ (x j).parts.2.InputsLt m := by
+  obtain ⟨h, h1, h2⟩ := parts_spec env hj
+  exact ⟨by rw [← h]; rfl, by rw [← h]; rfl, h1, h2⟩
+
+theorem pairA_spec (hx : ∀ j < p, (x j).Good m) {i : ℕ} (hi : i < p / 2) :
+    evC env (pairA p x i) = (x (i + 1)).toC env + (x (p - (i + 1))).toC env ∧
+      (pairA p x i).1.InputsLt m ∧ (pairA p x i).2.InputsLt m := by
+  obtain ⟨a1, a2, a3, a4⟩ := parts_re_im env x (hx (i + 1) (by omega))
+  obtain ⟨b1, b2, b3, b4⟩ := parts_re_im env x (hx (p - (i + 1)) (by omega))
+  refine ⟨?_, il_mkAdd a3 b3, il_mkAdd a4 b4⟩
+  apply Complex.ext <;> simp [pairA, evC, ev_mkAdd, a1, a2, b1, b2]
+
+theorem pairB_spec (hx : ∀ j < p, (x j).Good m) {i : ℕ} (hi : i < p / 2) :
+    evC env (pairB p x i) = (x (i + 1)).toC env - (x (p - (i + 1))).toC env ∧
+      (pairB p x i).1.InputsLt m ∧ (pairB p x i).2.InputsLt m := by
+  obtain ⟨a1, a2, a3, a4⟩ := parts_re_im env x (hx (i + 1) (by omega))
+  obtain ⟨b1, b2, b3, b4⟩ := parts_re_im env x (hx (p - (i + 1)) (by omega))
+  refine ⟨?_, il_mkSub a3 b3, il_mkSub a4 b4⟩
+  apply Complex.ext <;> simp [pairB, evC, ev_mkSub, a1, a2, b1, b2]
+
+theorem oddA_spec (hp : 0 < p) (hx : ∀ j < p, (x j).Good m) (k : ℕ) :
+    evC env (oddA p k x) = (x 0).toC env + ∑ i ∈ range (p / 2),
+        (Real.cos (ang p ((i + 1) * k)) : ℂ) * ((x (i + 1)).toC env + (x (p - (i + 1))).toC env) ∧
+      (oddA p k x).1.InputsLt m ∧ (oddA p k x).2.InputsLt m := by
+  obtain ⟨z1, z2, z3, z4⟩ := parts_re_im env x (hx 0 hp)
+  have hc : ∀ i, sgn (cosQ ((i + 1) * k % p) p).1 * (cosQ ((i + 1) * k % p) p).2.toReal =
+      Real.cos (ang p ((i + 1) * k)) := fun i => cosQ_spec (Nat.mod_lt _ hp)
+  have hil : ∀ (part : SExpr × SExpr → SExpr), (∀ i < p / 2, (part (pairA p x i)).InputsLt m) →
+      ∀ t ∈ cTerms p k x part, t.2.2.InputsLt m := by
+    intro part hpart t ht
+    simp only [cTerms, List.mem_map, List.mem_range] at ht
+    obtain ⟨i, hi, rfl⟩ := ht
+    exact hpart i hi
+  refine ⟨?_, il_lacc _ (hil _ fun i hi => (pairA_spec env x hx hi).2.1) _ z3,
+    il_lacc _ (hil _ fun i hi => (pairA_spec env x hx hi).2.2) _ z4⟩
+  apply Complex.ext
+  · simp only [oddA, evC, ev_lacc, cTerms, List.map_map, Complex.add_re, Complex.re_sum,
+      Complex.re_ofReal_mul]
+    rw [z1, list_sum_range]
+    congr 1
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    simp only [Function.comp, tval]
+    rw [hc i, show ev env (pairA p x i).1 = (evC env (pairA p x i)).re from rfl,
+      (pairA_spec env x hx (Finset.mem_range.mp hi)).1, Complex.add_re]
+  · simp only [oddA, evC, ev_lacc, cTerms, List.map_map, Complex.add_im, Complex.im_sum,
+      Complex.im_ofReal_mul]
+    rw [z2, list_sum_range]
+    congr 1
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    simp only [Function.comp, tval]
+    rw [hc i, show ev env (pairA p x i).2 = (evC env (pairA p x i)).im from rfl,
+      (pairA_spec env x hx (Finset.mem_range.mp hi)).1, Complex.add_im]
+
+theorem oddS_spec (hp : 0 < p) (hx : ∀ j < p, (x j).Good m) (k : ℕ) :
+    evC env (oddS p k x) = ∑ i ∈ range (p / 2),
+        (Real.sin (ang p ((i + 1) * k)) : ℂ) * ((x (i + 1)).toC env - (x (p - (i + 1))).toC env) ∧
+      (oddS p k x).1.InputsLt m ∧ (oddS p k x).2.InputsLt m := by
+  have hs : ∀ i, sgn (sinQ ((i + 1) * k % p) p).1 * (sinQ ((i + 1) * k % p) p).2.toReal =
+      Real.sin (ang p ((i + 1) * k)) := fun i => sinQ_spec (Nat.mod_lt _ hp)
+  have hil : ∀ (part : SExpr × SExpr → SExpr), (∀ i < p / 2, (part (pairB p x i)).InputsLt m) →
+      ∀ t ∈ sTerms p k x part, t.2.2.InputsLt m := by
+    intro part hpart t ht
+    simp only [sTerms, List.mem_map, List.mem_range] at ht
+    obtain ⟨i, hi, rfl⟩ := ht
+    exact hpart i hi
+  refine ⟨?_, il_lsum _ (hil _ fun i hi => (pairB_spec env x hx hi).2.1),
+    il_lsum _ (hil _ fun i hi => (pairB_spec env x hx hi).2.2)⟩
+  apply Complex.ext
+  · simp only [oddS, evC, ev_lsum, sTerms, List.map_map, Complex.re_sum, Complex.re_ofReal_mul]
+    rw [list_sum_range]
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    simp only [Function.comp, tval]
+    rw [hs i, show ev env (pairB p x i).1 = (evC env (pairB p x i)).re from rfl,
+      (pairB_spec env x hx (Finset.mem_range.mp hi)).1, Complex.sub_re]
+  · simp only [oddS, evC, ev_lsum, sTerms, List.map_map, Complex.im_sum, Complex.im_ofReal_mul]
+    rw [list_sum_range]
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    simp only [Function.comp, tval]
+    rw [hs i, show ev env (pairB p x i).2 = (evC env (pairB p x i)).im from rfl,
+      (pairB_spec env x hx (Finset.mem_range.mp hi)).1, Complex.sub_im]
+
+theorem oddX0_spec (hp : 0 < p) (hx : ∀ j < p, (x j).Good m) :
+    (oddX0 p x).toC env = (x 0).toC env + ∑ i ∈ range (p / 2),
+        ((x (i + 1)).toC env + (x (p - (i + 1))).toC env) ∧ (oddX0 p x).Good m := by
+  obtain ⟨z1, z2, z3, z4⟩ := parts_re_im env x (hx 0 hp)
+  have hl : ∀ i ∈ List.range (p / 2), i < p / 2 := fun i hi => List.mem_range.mp hi
+  refine ⟨?_, il_foldAdd _ _ (fun i hi => (pairA_spec env x hx (hl i hi)).2.1) _ z3,
+    il_foldAdd _ _ (fun i hi => (pairA_spec env x hx (hl i hi)).2.2) _ z4⟩
+  apply Complex.ext
+  · simp only [oddX0, toC_val, evC, ev_foldAdd, Complex.add_re, Complex.re_sum]
+    rw [z1, list_sum_range]
+    congr 1
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    rw [show ev env (pairA p x i).1 = (evC env (pairA p x i)).re from rfl,
+      (pairA_spec env x hx (Finset.mem_range.mp hi)).1, Complex.add_re]
+  · simp only [oddX0, toC_val, evC, ev_foldAdd, Complex.add_im, Complex.im_sum]
+    rw [z2, list_sum_range]
+    congr 1
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    rw [show ev env (pairA p x i).2 = (evC env (pairA p x i)).im from rfl,
+      (pairA_spec env x hx (Finset.mem_range.mp hi)).1, Complex.add_im]
+
+theorem oddPlus_spec (k : ℕ) (hp : 0 < p) (hx : ∀ j < p, (x j).Good m) :
+    (oddPlus p k x).toC env = evC env (oddA p k x) + I * evC env (oddS p k x) ∧
+      (oddPlus p k x).Good m := by
+  obtain ⟨-, a1, a2⟩ := oddA_spec env x hp hx k
+  obtain ⟨-, s1, s2⟩ := oddS_spec env x hp hx k
+  refine ⟨?_, il_mkSub a1 s2, il_mkAdd a2 s1⟩
+  rw [oddPlus, toC_val]
+  apply Complex.ext <;> simp [evC, ev_mkSub, ev_mkAdd, sub_eq_add_neg]
+
+theorem oddMinus_spec (k : ℕ) (hp : 0 < p) (hx : ∀ j < p, (x j).Good m) :
+    (oddMinus p k x).toC env = evC env (oddA p k x) - I * evC env (oddS p k x) ∧
+      (oddMinus p k x).Good m := by
+  obtain ⟨-, a1, a2⟩ := oddA_spec env x hp hx k
+  obtain ⟨-, s1, s2⟩ := oddS_spec env x hp hx k
+  refine ⟨?_, il_mkAdd a1 s2, il_mkSub a2 s1⟩
+  rw [oddMinus, toC_val]
+  apply Complex.ext <;> simp [evC, ev_mkSub, ev_mkAdd, sub_eq_add_neg]
+
+/-- The DFT of odd length in terms of `A_{k₀}` and `S_{k₀}`, when the twiddles of the pairs
+are `cos ± i e sin` of the angles `2π j k₀ / p`. -/
+theorem dft_odd_AS (fwd : Bool) (hp : p % 2 = 1) (hx : ∀ j < p, (x j).Good m) (k k0 : ℕ)
+    (e : ℝ) (he : e ^ 2 = 1) (T : ℕ → ℂ)
+    (hT : ∀ i < p / 2, T i = ⟨Real.cos (ang p ((i + 1) * k0)), e * Real.sin (ang p ((i + 1) * k0))⟩)
+    (h1 : ∀ i < p / 2, twiddle fwd p ((i + 1) * k) = T i)
+    (h2 : ∀ i < p / 2, twiddle fwd p ((p - (i + 1)) * k) = (T i)⁻¹) :
+    dftSum fwd p (fun j => (x j).toC env) k =
+      evC env (oddA p k0 x) + I * ((e : ℂ) * evC env (oddS p k0 x)) := by
+  have hp0 : 0 < p := by omega
+  rw [dft_odd_pairs fwd hp _ k T h1 h2, (oddA_spec env x hp0 hx k0).1, (oddS_spec env x hp0 hx k0).1]
+  rw [add_assoc]
+  congr 1
+  rw [Finset.mul_sum, Finset.mul_sum, ← Finset.sum_add_distrib]
+  refine Finset.sum_congr rfl (fun i hi => ?_)
+  have hi' := Finset.mem_range.mp hi
+  rw [hT i hi', pair_term _ _ (by rw [mul_pow, he, one_mul]; exact Real.cos_sq_add_sin_sq _)]
+  push_cast; ring
+
+/-- Outputs `1 ≤ k ≤ p/2`: `X_k = A_k + i·(±S_k)`. -/
+theorem dft_odd_low (fwd : Bool) (hp : p % 2 = 1) (hx : ∀ j < p, (x j).Good m) (k : ℕ) :
+    dftSum fwd p (fun j => (x j).toC env) k =
+      evC env (oddA p k x) + I * ((sgn fwd : ℂ) * evC env (oddS p k x)) := by
+  have hp0 : 0 < p := by omega
+  exact dft_odd_AS env x fwd hp hx k k (sgn fwd) (by unfold sgn; split <;> norm_num) _
+    (fun i _ => by rw [twiddle_cs fwd hp0]; rfl) (fun i _ => rfl)
+    (fun i _ => twiddle_pair fwd hp0 (by omega) k)
+
+/-- Outputs `p/2 < k < p`: `X_k = A_{p-k} - i·(±S_{p-k})`. -/
+theorem dft_odd_high (fwd : Bool) (hp : p % 2 = 1) (hx : ∀ j < p, (x j).Good m) {k : ℕ}
+    (hk : k < p) :
+    dftSum fwd p (fun j => (x j).toC env) k =
+      evC env (oddA p (p - k) x) + I * (((-sgn fwd : ℝ) : ℂ) * evC env (oddS p (p - k) x)) := by
+  have hp0 : 0 < p := by omega
+  have hk0 : k = p - (p - k) := by omega
+  have hsq := twiddle_cs_sq fwd
+  refine dft_odd_AS env x fwd hp hx k (p - k) (-sgn fwd) (by unfold sgn; split <;> norm_num)
+    (fun i => (twiddle fwd p ((i + 1) * (p - k)))⁻¹) ?_ ?_ ?_
+  · intro i _
+    rw [twiddle_cs fwd hp0, inv_cs _ _ (hsq _)]
+    simp [ang]
+  · intro i _
+    rw [hk0, Nat.mul_comm, twiddle_pair fwd hp0 (by omega), ← hk0, Nat.mul_comm]
+  · intro i _
+    simp only [inv_inv]
+    rw [hk0, Nat.mul_comm, twiddle_pair fwd hp0 (by omega), ← hk0, Nat.mul_comm,
+      twiddle_pair fwd hp0 (by omega), inv_inv]
+
+theorem oddLeaf_spec (fwd : Bool) (hp : p % 2 = 1) (hx : ∀ j < p, (x j).Good m) {k : ℕ}
+    (hk : k < p) :
+    (symOps.get (oddLeaf fwd p x) k).toC env = dftSum fwd p (fun j => (x j).toC env) k ∧
+      (symOps.get (oddLeaf fwd p x) k).Good m := by
+  have hp0 : 0 < p := by omega
+  have hget : symOps.get (oddLeaf fwd p x) k =
+      (if k = 0 then oddX0 p x
+       else if k ≤ p / 2 then (if fwd then oddMinus p k x else oddPlus p k x)
+       else (if fwd then oddPlus p (p - k) x else oddMinus p (p - k) x)) :=
+    symOps_get_build p _ hk
+  rw [hget]
+  split_ifs with h0 hh hf hf
+  · subst h0
+    obtain ⟨v, g⟩ := oddX0_spec env x hp0 hx
+    refine ⟨?_, g⟩
+    rw [v, dft_odd_pairs fwd hp _ 0 (fun _ => 1) (fun i _ => by simp [twiddle])
+      (fun i _ => by simp [twiddle])]
+    simp
+  · obtain ⟨v, g⟩ := oddMinus_spec env x k hp0 hx
+    refine ⟨?_, g⟩
+    rw [v, dft_odd_low env x fwd hp hx k, hf]; simp [sgn]; ring
+  · obtain ⟨v, g⟩ := oddPlus_spec env x k hp0 hx
+    refine ⟨?_, g⟩
+    rw [v, dft_odd_low env x fwd hp hx k, show fwd = false by simpa using hf]; simp [sgn]
+  · obtain ⟨v, g⟩ := oddPlus_spec env x (p - k) hp0 hx
+    refine ⟨?_, g⟩
+    rw [v, dft_odd_high env x fwd hp hx hk, hf]; simp [sgn]
+  · obtain ⟨v, g⟩ := oddMinus_spec env x (p - k) hp0 hx
+    refine ⟨?_, g⟩
+    rw [v, dft_odd_high env x fwd hp hx hk, show fwd = false by simpa using hf]; simp [sgn]; ring
+
+end OddLeaf
+
+/-! ### Leaves and the mixed-radix recursion -/
+
+theorem leafSym_spec (fwd : Bool) {p : ℕ} (hp : 0 < p) (x : ℕ → SC) (hx : ∀ j < p, (x j).Good m)
+    {k : ℕ} (hk : k < p) :
+    (symOps.get (leafSym fwd p x) k).toC env = dftSum fwd p (fun j => (x j).toC env) k ∧
+      (symOps.get (leafSym fwd p x) k).Good m := by
+  unfold leafSym
+  split_ifs with hodd
+  · exact oddLeaf_spec env x fwd hodd.1 hx hk
+  · obtain ⟨h1, h2⟩ := direct_sym env fwd p hp x hx k hk
+    refine ⟨?_, h2⟩
+    rw [h1]
+    have := exec_mkPlan_exact fwd [p] (by simpa using hp) (fun j => (x j).toC env) k (by simpa using hk)
+    simpa [mkPlan] using this
+
+/-- **The symbolic mixed-radix DFT denotes the DFT.** -/
+theorem symDFT_spec (fwd : Bool) : ∀ (fs : List ℕ), (∀ f ∈ fs, 0 < f) → ∀ (x : ℕ → SC),
+    (∀ j < fs.prod, (x j).Good m) → ∀ k < fs.prod,
+      (symOps.get (symDFT fwd fs x) k).toC env = dftSum fwd fs.prod (fun j => (x j).toC env) k ∧
+      (symOps.get (symDFT fwd fs x) k).Good m
+  | [], _, x, hx, k, hk => by
+    simp only [List.prod_nil] at hx hk ⊢
+    exact leafSym_spec env fwd (by norm_num) x hx hk
+  | [p], hpos, x, hx, k, hk => by
+    simp only [List.prod_cons, List.prod_nil, mul_one] at hx hk ⊢
+    exact leafSym_spec env fwd (hpos p (by simp)) x hx hk
+  | r :: s :: rest, hpos, x, hx, k, hk => by
+    have hr : 0 < r := hpos r (by simp)
+    have hrest : ∀ f ∈ s :: rest, 0 < f := fun f hf => hpos f (List.mem_cons_of_mem _ hf)
+    set M := (s :: rest).prod with hM
+    have hm : 0 < M := List.prod_pos hrest
+    have hprod : (r :: s :: rest).prod = r * M := List.prod_cons
+    rw [hprod] at hk hx ⊢
+    -- the sub-transforms
+    have hsub : ∀ j1 < r, ∀ k1 < M,
+        (symOps.get (symDFT fwd (s :: rest) (fun j2 => x (j1 + r * j2))) k1).toC env =
+          dftSum fwd M (fun j2 => (x (j1 + r * j2)).toC env) k1 ∧
+        (symOps.get (symDFT fwd (s :: rest) (fun j2 => x (j1 + r * j2))) k1).Good m :=
+      fun j1 hj1 k1 hk1 => symDFT_spec fwd (s :: rest) hrest _ (fun j2 hj2 => hx _ (by nlinarith)) k1 hk1
+    have hk1 : k % M < M := Nat.mod_lt _ hm
+    have hk2 : k / M < r := by rw [Nat.div_lt_iff_lt_mul hm]; linarith
+    -- unfold one level: output `k` is output `k / M` of the leaf of column `k % M`
+    set ys : Array (Array SC) := (Array.range r).map fun j1 =>
+      symDFT fwd (s :: rest) (fun j2 => x (j1 + r * j2)) with hys
+    set z : ℕ → SC := fun j1 => SC.mul (.tw fwd (r * M) (j1 * (k % M)))
+      (symOps.get (ys.getD j1 #[]) (k % M)) with hz
+    have hget : symOps.get (symDFT fwd (r :: s :: rest) x) k = symOps.get (leafSym fwd r z) (k / M) := by
+      simp only [symDFT, ← hM, ← hys]
+      rw [show (Array.range (r * M)).map (fun k => symOps.get (((Array.range M).map fun k1 =>
+          leafSym fwd r fun j1 => SC.mul (.tw fwd (r * M) (j1 * k1))
+            (symOps.get (ys.getD j1 #[]) k1)).getD (k % M) #[]) (k / M)) =
+          symOps.build (r * M) _ from rfl, symOps_get_build (r * M) _ hk]
+      simp [Array.getD, hk1, hz]
+    have hzv : ∀ j1 < r, (z j1).toC env = twiddle fwd (r * M) (j1 * (k % M)) *
+          dftSum fwd M (fun j2 => (x (j1 + r * j2)).toC env) (k % M) ∧ (z j1).Good m := by
+      intro j1 hj1
+      have hy : ys.getD j1 #[] = symDFT fwd (s :: rest) (fun j2 => x (j1 + r * j2)) := by
+        simp [hys, Array.getD, hj1]
+      obtain ⟨y1, y2⟩ := hsub j1 hj1 (k % M) hk1
+      obtain ⟨m1, m2⟩ := sc_mul env (m := m) (x := SC.tw fwd (r * M) (j1 * (k % M)))
+        (y := symOps.get (ys.getD j1 #[]) (k % M)) (Nat.mul_pos hr hm) (by rw [hy]; exact y2)
+      exact ⟨by rw [hz]; simp only; rw [m1, hy, y1]; rfl, m2⟩
+    obtain ⟨l1, l2⟩ := leafSym_spec env fwd hr z (fun j1 hj1 => (hzv j1 hj1).2) hk2
+    refine ⟨?_, by rw [hget]; exact l2⟩
+    rw [hget, l1, dftSum_ct fwd hr hm, dftSum]
+    refine Finset.sum_congr rfl (fun j1 hj1 => ?_)
+    have hj1' := Finset.mem_range.mp hj1
+    show _ * (z j1).toC env = _
+    rw [(hzv j1 hj1').1, ← mul_assoc]
+    congr 1
+    -- `ω_r^{j₁ k₂} ω_n^{j₁ k₁} = ω_n^{j₁ k}` for `k = k₁ + M k₂`
+    have hkk : j1 * k = j1 * (k % M) + M * (j1 * (k / M)) := by
+      conv_lhs => rw [← Nat.mod_add_div k M]
+      ring
+    rw [hkk, twiddle_add, mul_comm (twiddle fwd (r * M) _), mul_comm r M,
+      twiddle_scale fwd hm (j1 * (k / M))]
+
+/-! ### Coprime factors: the prime factor algorithm -/
+
+/-- The Good–Thomas index map `(j₁, j₂) ↦ (m j₁ + r j₂) mod rm` is a bijection
+`[0, r) × [0, m) → [0, rm)` for coprime `r`, `m`. -/
+theorem sum_pfa_index {β : Type*} [AddCommMonoid β] {r m : ℕ} (hcop : Nat.Coprime r m)
+    (f : ℕ → β) :
+    ∑ j1 ∈ range r, ∑ j2 ∈ range m, f ((m * j1 + r * j2) % (r * m)) = ∑ j ∈ range (r * m), f j := by
+  rw [← Finset.sum_product' (f := fun j1 j2 => f ((m * j1 + r * j2) % (r * m)))]
+  rcases Nat.eq_zero_or_pos (r * m) with h0 | hpos
+  · rcases Nat.mul_eq_zero.mp h0 with h | h <;> simp [h]
+  set φ : ℕ × ℕ → ℕ := fun p => (m * p.1 + r * p.2) % (r * m) with hφ
+  have hmaps : Set.MapsTo φ ↑(range r ×ˢ range m) ↑(range (r * m)) := fun p _ => by
+    simp only [coe_range, Set.mem_Iio, hφ]; exact Nat.mod_lt _ hpos
+  have hinj : Set.InjOn φ ↑(range r ×ˢ range m) := by
+    rintro ⟨a1, a2⟩ ha ⟨b1, b2⟩ hb h
+    simp only [coe_product, coe_range, Set.mem_prod, Set.mem_Iio] at ha hb
+    have h' : m * a1 + r * a2 ≡ m * b1 + r * b2 [MOD r * m] := h
+    have h1 : m * a1 ≡ m * b1 [MOD r] := by
+      have := Nat.ModEq.of_mul_right m h'
+      unfold Nat.ModEq at this ⊢
+      simpa [Nat.add_mul_mod_self_left] using this
+    have h2 : r * a2 ≡ r * b2 [MOD m] := by
+      have := Nat.ModEq.of_mul_left r h'
+      unfold Nat.ModEq at this ⊢
+      rw [add_comm (m * a1), add_comm (m * b1)] at this
+      simpa [Nat.add_mul_mod_self_left] using this
+    have e1 := Nat.ModEq.cancel_left_of_coprime hcop h1
+    have e2 := Nat.ModEq.cancel_left_of_coprime (Nat.Coprime.symm hcop) h2
+    unfold Nat.ModEq at e1 e2
+    rw [Nat.mod_eq_of_lt ha.1, Nat.mod_eq_of_lt hb.1] at e1
+    rw [Nat.mod_eq_of_lt ha.2, Nat.mod_eq_of_lt hb.2] at e2
+    simp [e1, e2]
+  have hsurj : Set.SurjOn φ ↑(range r ×ˢ range m) ↑(range (r * m)) :=
+    Finset.surjOn_of_injOn_of_card_le φ hmaps hinj (by simp)
+  exact Finset.sum_nbij φ (fun p hp => hmaps hp) hinj hsurj (fun _ _ => rfl)
+
+/-- **Good–Thomas.** For coprime `r`, `m`, the DFT of size `rm` is a two-dimensional
+`r × m` DFT without twiddle factors. -/
+theorem dftSum_pfa (fwd : Bool) {r m : ℕ} (hr : 0 < r) (hm : 0 < m) (hcop : Nat.Coprime r m)
+    (x : ℕ → ℂ) (k : ℕ) :
+    dftSum fwd (r * m) x k =
+      ∑ j1 ∈ range r, twiddle fwd r (j1 * (k % r)) *
+        dftSum fwd m (fun j2 => x ((m * j1 + r * j2) % (r * m))) (k % m) := by
+  rw [dftSum, ← sum_pfa_index hcop]
+  refine Finset.sum_congr rfl fun j1 _ => ?_
+  rw [dftSum, Finset.mul_sum]
+  refine Finset.sum_congr rfl fun j2 _ => ?_
+  have hn : 0 < r * m := Nat.mul_pos hr hm
+  have t1 : twiddle fwd r (j1 * (k % r)) = twiddle fwd (r * m) (m * (j1 * k)) := by
+    rw [← twiddle_mod fwd hr, Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, twiddle_mod fwd hr,
+      mul_comm r m, twiddle_scale fwd hm]
+  have t2 : twiddle fwd m (j2 * (k % m)) = twiddle fwd (r * m) (r * (j2 * k)) := by
+    rw [← twiddle_mod fwd hm, Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, twiddle_mod fwd hm,
+      twiddle_scale fwd hr]
+  rw [t1, t2, ← mul_assoc, ← twiddle_add, ← twiddle_mod fwd hn,
+    ← twiddle_mod fwd hn (m * (j1 * k) + r * (j2 * k))]
+  congr 2
+  rw [Nat.mod_mul_mod]
+  congr 1
+  ring
+
+theorem symDFT_block (fwd : Bool) {b : ℕ} (hb : 0 < b) (x : ℕ → SC) (hx : ∀ j < b, (x j).Good m)
+    {k : ℕ} (hk : k < b) :
+    (symOps.get (symDFT fwd (primeFactors b) x) k).toC env = dftSum fwd b (fun j => (x j).toC env) k ∧
+      (symOps.get (symDFT fwd (primeFactors b) x) k).Good m := by
+  have hp := primeFactors_prod hb
+  have := symDFT_spec env fwd (primeFactors b) (primeFactors_pos b) x (by rw [hp]; exact hx) k
+    (by rw [hp]; exact hk)
+  rwa [hp] at this
+
+/-- **The prime factor algorithm denotes the DFT.** -/
+theorem pfaDFT_spec (fwd : Bool) : ∀ (bs : List ℕ), (∀ b ∈ bs, 0 < b) → bs.Pairwise Nat.Coprime →
+    ∀ (x : ℕ → SC), (∀ j < bs.prod, (x j).Good m) → ∀ k < bs.prod,
+      (symOps.get (pfaDFT fwd bs x) k).toC env = dftSum fwd bs.prod (fun j => (x j).toC env) k ∧
+      (symOps.get (pfaDFT fwd bs x) k).Good m
+  | [], _, _, x, hx, k, hk => by
+    simp only [pfaDFT]
+    exact symDFT_spec env fwd [] (by simp) x hx k hk
+  | [b], hpos, _, x, hx, k, hk => by
+    simp only [List.prod_cons, List.prod_nil, mul_one] at hx hk ⊢
+    exact symDFT_block env fwd (hpos b (by simp)) x hx hk
+  | b :: c :: rest, hpos, hpw, x, hx, k, hk => by
+    have hb : 0 < b := hpos b (by simp)
+    have hrest : ∀ f ∈ c :: rest, 0 < f := fun f hf => hpos f (List.mem_cons_of_mem _ hf)
+    have hpw' := List.pairwise_cons.mp hpw
+    set M := (c :: rest).prod with hM
+    have hm : 0 < M := List.prod_pos hrest
+    have hcop : Nat.Coprime b M := Nat.coprime_list_prod_right_iff.mpr hpw'.1
+    have hprod : (b :: c :: rest).prod = b * M := List.prod_cons
+    rw [hprod] at hk hx ⊢
+    have hn : 0 < b * M := Nat.mul_pos hb hm
+    set ys : Array (Array SC) := (Array.range b).map fun j1 =>
+      pfaDFT fwd (c :: rest) (fun j2 => x ((M * j1 + b * j2) % (b * M))) with hys
+    have hsub : ∀ j1 < b, ∀ k2 < M,
+        (symOps.get (ys.getD j1 #[]) k2).toC env =
+          dftSum fwd M (fun j2 => (x ((M * j1 + b * j2) % (b * M))).toC env) k2 ∧
+        (symOps.get (ys.getD j1 #[]) k2).Good m := by
+      intro j1 hj1 k2 hk2
+      have hy : ys.getD j1 #[] = pfaDFT fwd (c :: rest) (fun j2 => x ((M * j1 + b * j2) % (b * M))) := by
+        simp [hys, Array.getD, hj1]
+      rw [hy]
+      exact pfaDFT_spec fwd (c :: rest) hrest hpw'.2 _ (fun j2 _ => hx _ (Nat.mod_lt _ hn)) k2 hk2
+    have hk1 : k % M < M := Nat.mod_lt _ hm
+    have hk2 : k % b < b := Nat.mod_lt _ hb
+    set z : ℕ → SC := fun j1 => symOps.get (ys.getD j1 #[]) (k % M) with hz
+    have hget : symOps.get (pfaDFT fwd (b :: c :: rest) x) k =
+        symOps.get (symDFT fwd (primeFactors b) z) (k % b) := by
+      simp only [pfaDFT, ← hM, ← hys]
+      rw [show (Array.range (b * M)).map (fun k => symOps.get (((Array.range M).map fun k2 =>
+          symDFT fwd (primeFactors b) fun j1 => symOps.get (ys.getD j1 #[]) k2).getD (k % M) #[])
+            (k % b)) = symOps.build (b * M) _ from rfl, symOps_get_build (b * M) _ hk]
+      simp [Array.getD, hk1, hz]
+    obtain ⟨l1, l2⟩ := symDFT_block env fwd hb z (fun j1 hj1 => (hsub j1 hj1 (k % M) hk1).2) hk2
+    refine ⟨?_, by rw [hget]; exact l2⟩
+    rw [hget, l1, dftSum_pfa fwd hb hm hcop, dftSum]
+    refine Finset.sum_congr rfl (fun j1 hj1 => ?_)
+    rw [(hsub j1 (Finset.mem_range.mp hj1) (k % M) hk1).1]
+
+
 /-! ## The generated butterfly kernels compute the DFT -/
 
 /-- The complex value of butterfly input `r` (the input times its twiddle, if any) for
@@ -639,12 +1247,29 @@ theorem bflySym_spec (env : ℕ → ℝ) (fwd : Bool) {R : ℕ} (hR : 0 < R) (tw
     (symOps.get (bflySym fwd R twiddled) k).toC env = dftSum fwd R (bflyX R twiddled env) k ∧
       (symOps.get (bflySym fwd R twiddled) k).Good (butterflyInputs R twiddled) := by
   have hprod := primeFactors_prod hR
-  obtain ⟨h1, h2⟩ := exec_sym env fwd (primeFactors R) (primeFactors_pos R) (bflyIn R twiddled)
-    (fun j hj => (bflyIn_spec env R twiddled (hprod ▸ hj)).2) k (by rw [hprod]; exact hk)
-  refine ⟨?_, h2⟩
+  have hin : ∀ j < (primeFactors R).prod, (bflyIn R twiddled j).Good (butterflyInputs R twiddled) :=
+    fun j hj => (bflyIn_spec env R twiddled (hprod ▸ hj)).2
+  have hk' : k < (primeFactors R).prod := by rw [hprod]; exact hk
   unfold bflySym
-  rw [h1, exec_mkPlan_exact fwd _ (primeFactors_pos R) _ k (by rw [hprod]; exact hk), hprod]
-  exact dftSum_congr (fun j hj => (bflyIn_spec env R twiddled hj).1) k
+  split
+  · obtain ⟨h1, h2⟩ := exec_sym env fwd (primeFactors R) (primeFactors_pos R) (bflyIn R twiddled) hin k hk'
+    refine ⟨?_, h2⟩
+    rw [h1, exec_mkPlan_exact fwd _ (primeFactors_pos R) _ k hk', hprod]
+    exact dftSum_congr (fun j hj => (bflyIn_spec env R twiddled hj).1) k
+  · split
+    · rename_i hok
+      obtain ⟨hp, hpos, hpw⟩ := hok
+      have hin' : ∀ j < (ppBlocks R).prod, (bflyIn R twiddled j).Good (butterflyInputs R twiddled) :=
+        fun j hj => (bflyIn_spec env R twiddled (hp ▸ hj)).2
+      obtain ⟨h1, h2⟩ := pfaDFT_spec env fwd (ppBlocks R) hpos hpw (bflyIn R twiddled) hin' k
+        (by rw [hp]; exact hk)
+      refine ⟨?_, h2⟩
+      rw [h1, hp]
+      exact dftSum_congr (fun j hj => (bflyIn_spec env R twiddled hj).1) k
+    · obtain ⟨h1, h2⟩ := symDFT_spec env fwd (primeFactors R) (primeFactors_pos R) (bflyIn R twiddled) hin k hk'
+      refine ⟨?_, h2⟩
+      rw [h1, hprod]
+      exact dftSum_congr (fun j hj => (bflyIn_spec env R twiddled hj).1) k
 
 /-- **The generated butterfly kernels are correct.** Over exact real arithmetic, the kernel
 that the C code of a radix-`R` butterfly is printed from maps the input variables `v` to the

@@ -53,10 +53,14 @@ void lf_lean_reference(size_t N, int fwd, int s, const int *R, const double *in,
 
 /* ---- enumeration of radix sequences: first radix, then a monotone tail ---- */
 
-static const int firsts[] = { 2, 4, 8, 16, 32 };
-static const int mids[] = { 32, 16, 8, 4, 2 };
+static const int firsts2[] = { 2, 4, 8, 16, 32 };
+static const int mids2[] = { 32, 16, 8, 4, 2 };
+/* radices of mixed-radix plans (N not a power of two) */
+static const int firstsM[] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 32 };
+static const int midsM[] = { 32, 16, 15, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2 };
 
-struct en { size_t N; int fwd; void (*f)(int, const int *, int, void *); void *ctx; int R[LF_MAXPASS]; };
+struct en { size_t N; int fwd; void (*f)(int, const int *, int, void *); void *ctx; int R[LF_MAXPASS];
+            const int *mids; int nmids; };
 
 static void emit_all(struct en *e, int s)
 {
@@ -73,25 +77,30 @@ static void tail(struct en *e, int s, size_t M, int lo, int dir, int first, int 
           return;
      }
      if (s >= LF_MAXPASS) return;
-     for (int i = 0; i < (int)(sizeof mids / sizeof mids[0]); ++i) {
+     for (int i = 0; i < e->nmids; ++i) {
           if (dir == 0 ? i < lo : i > lo) continue;
-          if (M % (size_t)mids[i] == 0) {
-               e->R[s] = mids[i];
-               tail(e, s + 1, M / (size_t)mids[i], i, dir, 0, strict || (!first && i != lo));
+          if (M % (size_t)e->mids[i] == 0) {
+               e->R[s] = e->mids[i];
+               tail(e, s + 1, M / (size_t)e->mids[i], i, dir, 0, strict || (!first && i != lo));
           }
      }
 }
 
 void lf_enumerate(size_t N, int fwd, void (*f)(int, const int *, int, void *), void *ctx)
 {
-     struct en e = { N, fwd, f, ctx, { 0 } };
+     struct en e = { N, fwd, f, ctx, { 0 }, mids2, 5 };
+     const int pow2 = (N & (N - 1)) == 0;
+     const int *firsts = pow2 ? firsts2 : firstsM;
+     const size_t nf = pow2 ? 5 : sizeof firstsM / sizeof firstsM[0];
+     if (!pow2) { e.mids = midsM; e.nmids = (int)(sizeof midsM / sizeof midsM[0]); }
      e.R[0] = (int)N;
-     if (lf_mode_vl(N, fwd, 1, e.R, LF_STOCKHAM)) f(1, e.R, 0, ctx);
-     for (size_t i = 0; i < sizeof firsts / sizeof firsts[0]; ++i)
+     if (lf_mode_vl(N, fwd, 1, e.R, LF_STOCKHAM)) f(1, e.R, LF_STOCKHAM, ctx);
+     if (lf_mode_vl(N, fwd, 1, e.R, LF_CFUSED)) f(1, e.R, LF_CFUSED, ctx);
+     for (size_t i = 0; i < nf; ++i)
           if (N % (size_t)firsts[i] == 0 && N > (size_t)firsts[i]) {
                e.R[0] = firsts[i];
                tail(&e, 1, N / (size_t)firsts[i], 0, 0, 1, 0);
-               tail(&e, 1, N / (size_t)firsts[i], 4, 1, 1, 0);
+               tail(&e, 1, N / (size_t)firsts[i], e.nmids - 1, 1, 1, 0);
           }
 }
 

@@ -111,8 +111,48 @@ static long check_blocked(size_t N, int fwd, long *nplans)
      return nfail;
 }
 
+static int smooth13(size_t n)
+{
+     static const size_t ps[] = { 2, 3, 5, 7, 11, 13 };
+     for (size_t i = 0; i < sizeof ps / sizeof ps[0]; ++i)
+          while (n % ps[i] == 0) n /= ps[i];
+     return n == 1;
+}
+
+/* all plans of one size N, both directions */
+static void check_size(size_t N, long *tot, long *fail)
+{
+     for (int fwd = 0; fwd <= 1; ++fwd) {
+          struct tc c;
+          memset(&c, 0, sizeof c);
+          c.N = N; c.fwd = fwd;
+          c.in = malloc(2 * N * sizeof(double));
+          c.ref = malloc(2 * N * sizeof(double));
+          c.out = malloc(2 * N * sizeof(double));
+          for (size_t i = 0; i < 2 * N; ++i) c.in[i] = rnd();
+          c.base = lf_lean_base_table(N, fwd);
+          lf_enumerate(N, fwd, check, &c);
+          printf("N=%zu fwd=%d plans=%ld fail=%ld maxL2err=%.3g\n", N, fwd, c.nplans, c.nfail, c.maxerr);
+          fflush(stdout);
+          *tot += c.nplans; *fail += c.nfail;
+          free(c.in); free(c.ref); free(c.out); free(c.base);
+     }
+}
+
 int main(int argc, char **argv)
 {
+     if (argc > 1 && !strcmp(argv[1], "mixed")) {
+          /* mixed-radix sizes: every 13-smooth N <= maxn that is not a power of two, then the
+             sizes given after maxn */
+          size_t maxn = argc > 2 ? (size_t)atol(argv[2]) : 200;
+          long tot = 0, fail = 0;
+          lf_lean_init();
+          for (size_t N = 3; N <= maxn; ++N)
+               if ((N & (N - 1)) && smooth13(N)) check_size(N, &tot, &fail);
+          for (int i = 3; i < argc; ++i) check_size((size_t)atol(argv[i]), &tot, &fail);
+          printf("total plans=%ld failures=%ld\n", tot, fail);
+          return fail != 0;
+     }
      int maxlg = argc > 1 ? atoi(argv[1]) : 12;
      int blk = argc > 2 ? atoi(argv[2]) : 0;
      int minlg = argc > 3 ? atoi(argv[3]) : 0;

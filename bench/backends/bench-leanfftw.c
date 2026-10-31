@@ -1,6 +1,7 @@
 /* libbench2 backend for the Lean FFTW library: the fast engine (Lean-generated SIMD
- * Stockham kernels, see csrc/) for 1-D complex power-of-two transforms with unit stride,
- * interleaved, in-place or out-of-place, and the generic engine for everything else.
+ * Stockham kernels, see csrc/) for 1-D complex transforms with unit stride,
+ * interleaved, in-place or out-of-place, of sizes N whose prime factors are at most 13, and
+ * the generic engine for everything else.
  *
  * Generic engine (pure Lean, compiled by Lean):
  *
@@ -225,7 +226,14 @@ static int fast_ok(const bench_problem *p)
      if (p->sz->rnk != 1 || p->vecsz->rnk != 0) return 0;
      if (p->sz->dims[0].is != 1 || p->sz->dims[0].os != 1) return 0;
      n = (size_t) p->sz->dims[0].n;
-     return n >= 1 && (n & (n - 1)) == 0 && n <= ((size_t) 1 << 24);
+     if (n < 1 || n > ((size_t) 1 << 24)) return 0;
+     /* prime factors with generated radices: 2, 3, 5, 7, 11, 13 */
+     {
+          static const size_t ps[] = { 2, 3, 5, 7, 11, 13 };
+          for (size_t i = 0; i < sizeof ps / sizeof ps[0]; ++i)
+               while (n % ps[i] == 0) n /= ps[i];
+     }
+     return n == 1;
 }
 
 void setup(bench_problem *p)

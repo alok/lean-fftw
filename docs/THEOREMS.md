@@ -66,6 +66,20 @@ lemmas:
 | `ev_contract` | FMA contraction (`SExpr.contract`) does not change an expression's real value |
 | `evC_rotQ` | the twiddle rotation `SC.rotQ k n a b` denotes `(a + ib) · exp(2πik/n)` for `4k < n`. Since i7 a rotation by `θ ∉ (π/4)ℤ` is generated as `cos θ · (a − tan θ · b) + i · cos θ · (b + tan θ · a)` (one fused operation per part; the product by `cos θ` fuses into the butterfly additions), and the proof uses `tan θ · cos θ = sin θ` with `cos θ > 0` (`cos_two_pi_div_pos`) |
 
+Kernels whose radix is not a power of two (3, 5, 6, 7, 9–13, 15, and the whole-transform
+kernels of composite sizes up to 64) are built from three classical algorithms
+(`Gen/SymDFT.lean`), each proved to denote the DFT. `butterflyK_correct` covers them through
+`bflySym_spec`, so every downstream theorem holds for them unchanged.
+
+| Theorem | Statement |
+|---|---|
+| `oddLeaf_spec` | for odd `p`, the paired form `X_k = A_k ± i·S_k`, `X_{p-k} = A_k ∓ i·S_k` with `A_k = x₀ + Σ cos(2πjk/p)(x_j + x_{p-j})` and `S_k = Σ sin(2πjk/p)(x_j − x_{p-j})` (real coefficients, every constant in the first quadrant, signs carried by `fma`/`fnma`) is the length-`p` DFT |
+| `symDFT_spec` | the mixed-radix recursion `symDFT` (sub-transforms of the decimated inputs, twiddles, then length-`r` DFTs) over a list of positive factors is the DFT of size `fs.prod` |
+| `sum_pfa_index` | for coprime `r`, `m`, `(j₁, j₂) ↦ (m·j₁ + r·j₂) mod rm` is a bijection `[0,r) × [0,m) → [0,rm)`, as a statement about sums |
+| `dftSum_pfa` | **Good–Thomas:** for coprime `r`, `m`, `dftSum fwd (r·m) x k = Σ_{j₁<r} ω_r^{j₁·(k mod r)} · dftSum fwd m (j₂ ↦ x((m·j₁ + r·j₂) mod rm)) (k mod m)`, with no twiddle factors |
+| `pfaDFT_spec` | the prime factor algorithm `pfaDFT` over pairwise coprime blocks (each block by `symDFT`) is the DFT of size `bs.prod` |
+| `bflySym_spec` | the symbolic butterfly is the DFT of its inputs for every `R > 0`: `mkPlan`/`exec` for powers of two, `pfaDFT` over the prime-power blocks of `R` when the generator's decidable check `PfaOK` passes (product `R`, positive, pairwise coprime), `symDFT` otherwise |
+
 ### The Stockham schedule (`Proof/Stockham.lean`)
 
 `stockhamWith A fwd N rs twOf z` (`Gen/Stockham.lean`) runs the passes of a plan with radices
@@ -144,7 +158,7 @@ Hypotheses of the binary64 theorems, stated explicitly:
 ## Not proved
 
 * The generic engine's executable path (`floatOps`, `Core/FloatOps.lean`, used for
-  non-power-of-two sizes, r2c/c2r, r2r, multi-dimensional and strided problems) has an
+  1-D complex sizes with a prime factor above 13, r2c/c2r, r2r, multi-dimensional and strided problems) has an
   exact-arithmetic algorithm proof (`exec_mkPlan_exact`) and a proof that its compiled
   fast form computes the same function (`execFloat_eq_fast`), but no floating-point bound, and
   the r2r/r2c embeddings (`Core/Problem.lean`) are not proved; they are validated by FFTW's

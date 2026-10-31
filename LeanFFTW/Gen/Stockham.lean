@@ -2,6 +2,7 @@
 Copyright (c) 2026 Lean FFTW contributors. Released under MIT license.
 -/
 import LeanFFTW.Gen.Emit
+import LeanFFTW.Gen.SymDFT
 import LeanFFTW.Core.FloatOps
 import LeanFFTW.Core.FastPlan
 
@@ -18,8 +19,8 @@ out[b·ns·R + k + r·ns] = (DFT_R v)[r]
 ```
 
 The butterfly `DFT_R ∘ diag(ω)` is produced by running the proved generic `exec`/`mkPlan`
-on symbolic inputs (`symOps`), so its straight-line code is a CSE'd image of the verified
-algorithm. Passes are vectorized over `VL` consecutive `j` (one butterfly per lane) in
+(radices that are powers of two) or the proved `symDFT` (other radices) on symbolic inputs
+(`symOps`), so its straight-line code is a CSE'd image of a verified algorithm. Passes are vectorized over `VL` consecutive `j` (one butterfly per lane) in
 split real/imaginary format: lane-wise SIMD arithmetic performs, in every lane, exactly the
 scalar operations of the kernel. The first pass reads FFTW's interleaved input,
 deinterleaves it, and transposes `VL × VL` blocks (its outputs `out[j·R + r]` are strided
@@ -44,9 +45,14 @@ def bflyIn (R : Nat) (twiddled : Bool) (r : Nat) : SC :=
     SC.mulGen (.val (.input (2 * R + 2 * (r - 1))) (.input (2 * R + 2 * (r - 1) + 1))) xr
   else xr
 
-/-- The symbolic DFT of the butterfly inputs. -/
+/-- The symbolic DFT of the butterfly inputs: the generic `exec`/`mkPlan` for powers of two;
+otherwise the prime factor algorithm `pfaDFT` across the prime-power blocks of `R` (no
+twiddles between coprime factors), with `symDFT` (paired odd-length leaves, factored
+mixed-radix combination) inside each block. -/
 def bflySym (fwd : Bool) (R : Nat) (twiddled : Bool) : Array SC :=
-  exec symOps (mkPlan symOps fwd (primeFactors R)) (bflyIn R twiddled)
+  if R &&& (R - 1) == 0 then exec symOps (mkPlan symOps fwd (primeFactors R)) (bflyIn R twiddled)
+  else if PfaOK (ppBlocks R) R then pfaDFT fwd (ppBlocks R) (bflyIn R twiddled)
+  else symDFT fwd (primeFactors R) (bflyIn R twiddled)
 
 /-- The symbolic butterfly of a pass: inputs `x_r` (`r < R`, variables `2r, 2r+1`) and, when
 `twiddled`, twiddles `w_r` (`1 ≤ r < R`, variables `2R + 2(r-1)`, `+1`). Returns the `2R`
@@ -200,8 +206,38 @@ def transposeC (t : Target) (tag : String) (rows : Array String) : List String �
 def indent (n : Nat) (s : String) : String :=
   String.join ((s.splitOn "\n").filter (· ≠ "") |>.map fun l => String.ofList (List.replicate n ' ') ++ l ++ "\n")
 
-/-- First pass (`ns = 1`, untwiddled): interleaved `in` → split `ore`, `oim`. Requires
-`VL ∣ R` and `VL ∣ N/R`. -/
+/-- An unaligned vector load; masked (`maskz`, inactive lanes zero and not read) when `m` is
+the name of a lane mask. -/
+def vload (t : Target) (m : Option String) (ptr : String) : String :=
+  match m with
+  | none => s!"{t.pre}_loadu_pd({ptr})"
+  | some m => s!"{t.pre}_maskz_loadu_pd({m}, {ptr})"
+
+/-- An unaligned vector store, masked when `m` is the name of a lane mask. -/
+def vstore (t : Target) (m : Option String) (ptr v : String) : String :=
+  match m with
+  | none => s!"{t.pre}_storeu_pd({ptr}, {v});"
+  | some m => s!"{t.pre}_mask_storeu_pd({ptr}, {m}, {v});"
+
+/-- Scalar body of a first pass (butterfly `j`), shared by `emitFirst1` and the tails. -/
+def firstBody1 (R : Nat) (fwd : Bool) (ind : String) : List String := Id.run do
+  let k := (butterflyK fwd R false).inst .scalar ind "" vName
+  let mut ls : List String := []
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"{ind}const double {vName (2 * r)} = in[2 * (j + {r} * NR)];",
+      s!"{ind}const double {vName (2 * r + 1)} = in[2 * (j + {r} * NR) + 1];"]
+  ls := ls ++ k.lines
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"{ind}ore[j * {R} + {r}] = {k.outs[2 * r]!};",
+      s!"{ind}oim[j * {R} + {r}] = {k.outs[2 * r + 1]!};"]
+  return ls
+
+/-- First pass (`ns = 1`, untwiddled): interleaved `in` → split `ore`, `oim`, vectorized over
+`VL` consecutive butterflies `j`. The outputs `j·R + r` of a vector of butterflies are
+transposed in registers when `VL ∣ R`, and otherwise go through a small buffer. Butterflies
+beyond the last multiple of `VL` below `N/R` run in a scalar loop with the same operations. -/
 def emitFirst (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let ty := t.ty
@@ -210,7 +246,8 @@ def emitFirst (R vl : Nat) (fwd : Bool) : String := Id.run do
   let mut ls : List String := [
     s!"static void {firstName R vl fwd}(const double *restrict in, double *restrict ore, double *restrict oim, size_t N) \{",
     s!"  const size_t NR = N / {R};",
-    s!"  for (size_t j = 0; j < NR; j += {vl}) \{"]
+    "  size_t j = 0;",
+    s!"  for (; j + {vl} <= NR; j += {vl}) \{"]
   for r in [0:R] do
     ls := ls ++ [
       s!"    const {ty} la{r} = {p}_loadu_pd(in + 2 * (j + {r} * NR));",
@@ -218,31 +255,82 @@ def emitFirst (R vl : Nat) (fwd : Bool) : String := Id.run do
       s!"    const {ty} {vName (2 * r)} = lf{vl}_dre(la{r}, lb{r});",
       s!"    const {ty} {vName (2 * r + 1)} = lf{vl}_dim(la{r}, lb{r});"]
   ls := ls ++ k.lines
-  for (part, base) in [(0, "ore"), (1, "oim")] do
-    for c in [0:R / vl] do
-      let rows := (Array.range vl).map fun i => k.outs[2 * (c * vl + i) + part]!
-      let (decls, cols) := transposeC t s!"q{part}_{c}" rows
-      ls := ls ++ decls
-      for l in [0:vl] do
-        ls := ls ++ [s!"    {p}_storeu_pd({base} + (j + {l}) * {R} + {c * vl}, {cols[l]!});"]
+  if R % vl == 0 then
+    for (part, base) in [(0, "ore"), (1, "oim")] do
+      for c in [0:R / vl] do
+        let rows := (Array.range vl).map fun i => k.outs[2 * (c * vl + i) + part]!
+        let (decls, cols) := transposeC t s!"q{part}_{c}" rows
+        ls := ls ++ decls
+        for l in [0:vl] do
+          ls := ls ++ [s!"    {p}_storeu_pd({base} + (j + {l}) * {R} + {c * vl}, {cols[l]!});"]
+  else
+    -- output `i` (`2r + part`) of lane `l` is `tb[i·VL + l]`
+    ls := ls ++ [s!"    double tb[{2 * R * vl}] __attribute__((aligned(64)));"]
+    for i in [0:2 * R] do
+      ls := ls ++ [s!"    {p}_store_pd(tb + {i * vl}, {k.outs[i]!});"]
+    for l in [0:vl] do
+      for r in [0:R] do
+        ls := ls ++ [
+          s!"    ore[(j + {l}) * {R} + {r}] = tb[{2 * r * vl + l}];",
+          s!"    oim[(j + {l}) * {R} + {r}] = tb[{(2 * r + 1) * vl + l}];"]
+  -- tail: one iteration with the butterflies `j … NR-1` masked in, through the buffer
+  ls := ls ++ ["  }", "  if (j < NR) {",
+    "    const unsigned tl = (unsigned)(NR - j);",
+    s!"    const __mmask8 m0 = (__mmask8)(2 * tl >= {vl} ? 0xFFu : (1u << (2 * tl)) - 1);",
+    s!"    const __mmask8 m1 = (__mmask8)(2 * tl <= {vl} ? 0u : (1u << (2 * tl - {vl})) - 1);"]
+  for r in [0:R] do
+    ls := ls ++ [
+      s!"    const {ty} la{r} = {vload t (some "m0") s!"in + 2 * (j + {r} * NR)"};",
+      s!"    const {ty} lb{r} = {vload t (some "m1") s!"in + 2 * (j + {r} * NR) + {vl}"};",
+      s!"    const {ty} {vName (2 * r)} = lf{vl}_dre(la{r}, lb{r});",
+      s!"    const {ty} {vName (2 * r + 1)} = lf{vl}_dim(la{r}, lb{r});"]
+  ls := ls ++ k.lines
+  if R % vl == 0 then
+    -- transposed rows `l < tl` only
+    for (part, base) in [(0, "ore"), (1, "oim")] do
+      for c in [0:R / vl] do
+        let rows := (Array.range vl).map fun i => k.outs[2 * (c * vl + i) + part]!
+        let (decls, cols) := transposeC t s!"q{part}_{c}" rows
+        ls := ls ++ decls
+        for l in [0:vl] do
+          ls := ls ++ [s!"    if ({l}u < tl) {p}_storeu_pd({base} + (j + {l}) * {R} + {c * vl}, {cols[l]!});"]
+  else
+    ls := ls ++ [s!"    double tb[{2 * R * vl}] __attribute__((aligned(64)));"]
+    for i in [0:2 * R] do
+      ls := ls ++ [s!"    {p}_store_pd(tb + {i * vl}, {k.outs[i]!});"]
+    ls := ls ++ ["    for (unsigned l = 0; l < tl; ++l) {"]
+    for r in [0:R] do
+      ls := ls ++ [
+        s!"      ore[(j + l) * {R} + {r}] = tb[{2 * r * vl} + l];",
+        s!"      oim[(j + l) * {R} + {r}] = tb[{(2 * r + 1) * vl} + l];"]
+    ls := ls ++ ["    }"]
   ls := ls ++ ["  }", "}", ""]
   return joinLines ls
 
-/-- Shared body of twiddled passes: loads from split `ire`, `iim` and the twiddle table. -/
-def twiddledLoads (R vl : Nat) : List String := Id.run do
+/-- Scalar first pass (any `R` and `N`): interleaved `in` → split `ore`, `oim`. -/
+def emitFirst1 (R : Nat) (fwd : Bool) : String :=
+  joinLines ([
+    s!"static void {firstName R 1 fwd}(const double *restrict in, double *restrict ore, double *restrict oim, size_t N) \{",
+    s!"  const size_t NR = N / {R};",
+    "  for (size_t j = 0; j < NR; ++j) {"] ++ firstBody1 R fwd "    " ++ ["  }", "}", ""])
+
+/-- Shared body of twiddled passes: loads from split `ire`, `iim` and the twiddle table
+(masked by `m` in a tail iteration). -/
+def twiddledLoads (R vl : Nat) (m : Option String := none) : List String := Id.run do
   let t := targetOf vl
   let mut ls : List String := []
   for r in [0:R] do
     ls := ls ++ [
-      s!"      const {t.ty} {vName (2 * r)} = {t.pre}_loadu_pd(ire + j + {r} * NR);",
-      s!"      const {t.ty} {vName (2 * r + 1)} = {t.pre}_loadu_pd(iim + j + {r} * NR);"]
+      s!"      const {t.ty} {vName (2 * r)} = {vload t m s!"ire + j + {r} * NR"};",
+      s!"      const {t.ty} {vName (2 * r + 1)} = {vload t m s!"iim + j + {r} * NR"};"]
   for r in [1:R] do
     ls := ls ++ [
-      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1))} = {t.pre}_loadu_pd(tw + {2 * (r - 1)} * ns + k);",
-      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1) + 1)} = {t.pre}_loadu_pd(tw + {2 * (r - 1) + 1} * ns + k);"]
+      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1))} = {vload t m s!"tw + {2 * (r - 1)} * ns + k"};",
+      s!"      const {t.ty} {vName (2 * R + 2 * (r - 1) + 1)} = {vload t m s!"tw + {2 * (r - 1) + 1} * ns + k"};"]
   return ls
 
-/-- Middle pass: split → split, twiddled. Requires `VL ∣ ns`. -/
+/-- Middle pass: split → split, twiddled. Butterflies `k` beyond the last multiple of `VL`
+below `ns` run in a scalar loop with the same operations. -/
 def emitMid (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let k := (butterflyK fwd R true).inst t "      " "" vName
@@ -250,7 +338,8 @@ def emitMid (R vl : Nat) (fwd : Bool) : String := Id.run do
     s!"static void {midName R vl fwd}(const double *restrict ire, const double *restrict iim, double *restrict ore, double *restrict oim, const double *restrict tw, size_t N, size_t ns) \{",
     s!"  const size_t NR = N / {R};",
     "  for (size_t b = 0; b < NR; b += ns) {",
-    s!"    for (size_t k = 0; k < ns; k += {vl}) \{",
+    "    size_t k = 0;",
+    s!"    for (; k + {vl} <= ns; k += {vl}) \{",
     "      const size_t j = b + k;",
     s!"      const size_t o = b * {R} + k;"]
   ls := ls ++ twiddledLoads R vl
@@ -259,10 +348,18 @@ def emitMid (R vl : Nat) (fwd : Bool) : String := Id.run do
     ls := ls ++ [
       s!"      {t.pre}_storeu_pd(ore + o + {r} * ns, {k.outs[2 * r]!});",
       s!"      {t.pre}_storeu_pd(oim + o + {r} * ns, {k.outs[2 * r + 1]!});"]
+  -- tail (`ns` not a multiple of `VL`): one iteration with the lanes `k … ns-1` masked in
+  ls := ls ++ ["    }", "    if (k < ns) {", "      const size_t j = b + k;",
+    s!"      const size_t o = b * {R} + k;",
+    "      const __mmask8 m = (__mmask8)((1u << (ns - k)) - 1);"] ++ twiddledLoads R vl (some "m") ++ k.lines
+  for r in [0:R] do
+    ls := ls ++ [
+      "      " ++ vstore t (some "m") s!"ore + o + {r} * ns" k.outs[2 * r]!,
+      "      " ++ vstore t (some "m") s!"oim + o + {r} * ns" k.outs[2 * r + 1]!]
   ls := ls ++ ["    }", "  }", "}", ""]
   return joinLines ls
 
-/-- Last pass: split → interleaved `out`, twiddled. Requires `VL ∣ ns`. -/
+/-- Last pass: split → interleaved `out`, twiddled, with a scalar tail as `emitMid`. -/
 def emitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
   let t := targetOf vl
   let k := (butterflyK fwd R true).inst t "      " "" vName
@@ -270,7 +367,8 @@ def emitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
     s!"static void {lastName R vl fwd}(const double *restrict ire, const double *restrict iim, double *restrict out, const double *restrict tw, size_t N, size_t ns) \{",
     s!"  const size_t NR = N / {R};",
     "  for (size_t b = 0; b < NR; b += ns) {",
-    s!"    for (size_t k = 0; k < ns; k += {vl}) \{",
+    "    size_t k = 0;",
+    s!"    for (; k + {vl} <= ns; k += {vl}) \{",
     "      const size_t j = b + k;",
     s!"      const size_t o = b * {R} + k;"]
   ls := ls ++ twiddledLoads R vl
@@ -279,6 +377,19 @@ def emitLast (R vl : Nat) (fwd : Bool) : String := Id.run do
     ls := ls ++ [
       s!"      {t.pre}_storeu_pd(out + 2 * (o + {r} * ns), lf{vl}_ilo({k.outs[2 * r]!}, {k.outs[2 * r + 1]!}));",
       s!"      {t.pre}_storeu_pd(out + 2 * (o + {r} * ns) + {vl}, lf{vl}_ihi({k.outs[2 * r]!}, {k.outs[2 * r + 1]!}));"]
+  -- tail: one masked iteration; output lane `l` is the doubles `2l`, `2l+1` of the pair of
+  -- interleaved stores
+  ls := ls ++ ["    }", "    if (k < ns) {", "      const size_t j = b + k;",
+    s!"      const size_t o = b * {R} + k;",
+    "      const unsigned tl = (unsigned)(ns - k);",
+    "      const __mmask8 m = (__mmask8)((1u << tl) - 1);",
+    s!"      const __mmask8 m0 = (__mmask8)(2 * tl >= {vl} ? 0xFFu : (1u << (2 * tl)) - 1);",
+    s!"      const __mmask8 m1 = (__mmask8)(2 * tl <= {vl} ? 0u : (1u << (2 * tl - {vl})) - 1);"] ++
+    twiddledLoads R vl (some "m") ++ k.lines
+  for r in [0:R] do
+    ls := ls ++ [
+      "      " ++ vstore t (some "m0") s!"out + 2 * (o + {r} * ns)" s!"lf{vl}_ilo({k.outs[2 * r]!}, {k.outs[2 * r + 1]!})",
+      "      " ++ vstore t (some "m1") s!"out + 2 * (o + {r} * ns) + {vl}" s!"lf{vl}_ihi({k.outs[2 * r]!}, {k.outs[2 * r + 1]!})"]
   ls := ls ++ ["    }", "  }", "}", ""]
   return joinLines ls
 
@@ -462,24 +573,36 @@ structure KernelSet where
   /-- `(R1, R2, VL)` of fused two-pass transforms -/
   fused : List (Nat × Nat × Nat) := []
 
+/-- Radices of mixed-radix (non-power-of-two) plans besides the powers of two. -/
+def mixedRadices : List Nat := [3, 5, 6, 7, 9, 10, 11, 12, 13, 15]
+
 def KernelSet.default : KernelSet where
-  first := [(4, 4), (8, 4), (16, 4), (8, 8), (16, 8), (32, 8)]
-  mid := [(2, 4), (4, 4), (8, 4), (2, 8), (4, 8), (8, 8), (16, 8), (32, 8)]
-  small := [2, 4, 8]
+  first := [(4, 4), (8, 4), (16, 4), (8, 8), (16, 8), (32, 8)] ++
+    ([2, 4, 8, 16, 32] ++ mixedRadices).map (·, 1) ++
+    [(2, 4), (2, 8), (4, 8)] ++ mixedRadices.flatMap fun R => [(R, 4), (R, 8)]
+  mid := [(2, 4), (4, 4), (8, 4), (2, 8), (4, 8), (8, 8), (16, 8), (32, 8)] ++
+    mixedRadices.flatMap fun R => [(R, 4), (R, 8)]
+  small := [2, 4, 8] ++ [3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15]
   fused := [(4, 4, 4), (4, 8, 4), (8, 4, 4), (8, 8, 4), (8, 8, 8), (8, 16, 8), (16, 8, 8),
     (16, 16, 8), (8, 32, 8), (32, 8, 8), (16, 32, 8), (32, 16, 8)]
+
+/-- The in-place schedule needs power-of-two radices and vector kernels (`ldel` lanes). -/
+def inplaceFirst (ks : KernelSet) : List (Nat × Nat) :=
+  ks.first.filter fun (R, vl) => vl > 1 && R &&& (R - 1) == 0 && R % vl == 0
+def inplaceMid (ks : KernelSet) : List (Nat × Nat) :=
+  ks.mid.filter fun (R, _) => R &&& (R - 1) == 0
 
 /-- The whole generated C translation unit: kernels plus lookup functions. -/
 def emitKernels (ks : KernelSet := .default) : String := Id.run do
   let mut s := "/* Generated by LeanFFTW.Gen.Stockham (Lean). Do not edit. */\n" ++ prelude
   let dirs := [true, false]
   for fwd in dirs do
-    for (R, vl) in ks.first do s := s ++ emitFirst R vl fwd
+    for (R, vl) in ks.first do s := s ++ (if vl == 1 then emitFirst1 R fwd else emitFirst R vl fwd)
     for (R, vl) in ks.mid do s := s ++ emitMid R vl fwd ++ emitLast R vl fwd
     for N in ks.small do s := s ++ emitSmall N fwd
     for (R1, R2, vl) in ks.fused do s := s ++ emitFused R1 R2 vl fwd
-    for (R, vl) in ks.first do s := s ++ emitLeaf R vl fwd
-    for (R, vl) in ks.mid do s := s ++ emitDit R vl fwd ++ emitDitLast R vl fwd
+    for (R, vl) in inplaceFirst ks do s := s ++ emitLeaf R vl fwd
+    for (R, vl) in inplaceMid ks do s := s ++ emitDit R vl fwd ++ emitDitLast R vl fwd
   s := s ++ "#include \"lf_kernels.h\"\n\n"
   let look (ty fn : String) (xs : List (Nat × Nat)) (nm : Nat → Nat → Bool → String) : String :=
     joinLines ([s!"{ty} {fn}(int R, int vl, int fwd) \{"] ++
@@ -489,9 +612,9 @@ def emitKernels (ks : KernelSet := .default) : String := Id.run do
   s := s ++ look "lf_first_fn" "lf_get_first" ks.first firstName
   s := s ++ look "lf_mid_fn" "lf_get_mid" ks.mid midName
   s := s ++ look "lf_last_fn" "lf_get_last" ks.mid lastName
-  s := s ++ look "lf_leaf_fn" "lf_get_leaf" ks.first leafName
-  s := s ++ look "lf_dit_fn" "lf_get_dit" ks.mid ditName
-  s := s ++ look "lf_ditlast_fn" "lf_get_ditlast" ks.mid ditLastName
+  s := s ++ look "lf_leaf_fn" "lf_get_leaf" (inplaceFirst ks) leafName
+  s := s ++ look "lf_dit_fn" "lf_get_dit" (inplaceMid ks) ditName
+  s := s ++ look "lf_ditlast_fn" "lf_get_ditlast" (inplaceMid ks) ditLastName
   s := s ++ joinLines (["lf_fused_fn lf_get_fused(int R1, int R2, int vl, int fwd) {"] ++
       (dirs.flatMap fun fwd => ks.fused.map fun (R1, R2, vl) =>
         s!"  if (R1 == {R1} && R2 == {R2} && vl == {vl} && fwd == {if fwd then 1 else 0}) return {fusedName R1 R2 vl fwd};") ++

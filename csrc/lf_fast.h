@@ -12,7 +12,8 @@ typedef struct lf_plan lf_plan;
    LF_STOCKHAM: out-of-place passes between two split work arrays;
    LF_FUSED: whole transform N = R[0]*R[1] in registers;
    LF_INPLACE: digit-reversed first pass into `out`, then in-place passes;
-   LF_CFUSED: whole transform N = R[0]*R[1] on interleaved complex vectors.
+   LF_CFUSED: whole transform N = R[0]*R[1] on interleaved complex vectors (s = 1: a whole
+     small transform of size R[0] = N on __m128d vectors).
    LF_CTWO: as LF_CFUSED, with the intermediate array in memory (larger N). */
 enum { LF_STOCKHAM = 0, LF_FUSED = 1, LF_INPLACE = 2, LF_CFUSED = 3, LF_CTWO = 4 };
 #define LF_NMODES 5

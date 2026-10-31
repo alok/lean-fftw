@@ -28,3 +28,8 @@ import LeanFFTW
 #print axioms LeanFFTW.exec_congr
 #print axioms LeanFFTW.Gen.ev_contract
 #print axioms LeanFFTW.Gen.evC_rotQ
+#print axioms LeanFFTW.Gen.oddLeaf_spec
+#print axioms LeanFFTW.Gen.symDFT_spec
+#print axioms LeanFFTW.Gen.dftSum_pfa
+#print axioms LeanFFTW.Gen.pfaDFT_spec
+#print axioms LeanFFTW.Gen.bflySym_spec

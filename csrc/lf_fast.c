@@ -75,11 +75,64 @@ static int try_vl(size_t N, int fwd, int s, const int *R, int vl, int mode)
      return ns == N;
 }
 
+/* Mixed-radix Stockham plans (N not a power of two): each pass has its own vector length,
+   VL = 8 or 4, whichever needs fewer loop iterations (ties: 4). The butterflies beyond the
+   last multiple of VL (j below N/R[0] in the first pass, k below ns in the others) run as one
+   iteration with masked loads and stores. A scalar first pass is used only when the radix has
+   no vector first-pass kernel. */
+static int first_vl(size_t N, int R, int fwd)
+{
+     static const int vls[] = { 8, 4 };
+     const size_t NR = N / (size_t)R;
+     int best = 0;
+     size_t bt = 0;
+     /* fewest iterations (the tail is one masked iteration); ties go to the narrower width,
+        which is tried last */
+     for (int i = 0; i < 2; ++i) {
+          size_t it = (NR + (size_t)vls[i] - 1) / (size_t)vls[i];
+          if (!lf_get_first(R, vls[i], fwd)) continue;
+          if (!best || it <= bt) { best = vls[i]; bt = it; }
+     }
+     if (best) return best;
+     return lf_get_first(R, 1, fwd) ? 1 : 0;
+}
+
+static int pass_vl(size_t ns, int R, int fwd, int last)
+{
+     static const int vls[] = { 8, 4 };
+     int best = 0;
+     size_t bt = 0;
+     for (int i = 0; i < 2; ++i) {
+          size_t it = (ns + (size_t)vls[i] - 1) / (size_t)vls[i];
+          if (last ? !lf_get_last(R, vls[i], fwd) : !lf_get_mid(R, vls[i], fwd)) continue;
+          if (!best || it <= bt) { best = vls[i]; bt = it; }
+     }
+     return best;
+}
+
+static int mixed_ok(size_t N, int fwd, int s, const int *R)
+{
+     size_t ns = 1;
+     if (!first_vl(N, R[0], fwd)) return 0;
+     for (int t = 0; t < s; ++t) {
+          if (R[t] < 2 || N % (size_t)R[t]) return 0;
+          if (t >= 1 && !pass_vl(ns, R[t], fwd, t == s - 1)) return 0;
+          ns *= (size_t)R[t];
+     }
+     return ns == N;
+}
+
 int lf_mode_vl(size_t N, int fwd, int s, const int *R, int mode)
 {
      static const int vls[] = { 8, 4 };
      if (s < 1 || s > LF_MAXPASS) return 0;
-     if (s == 1) return (mode == LF_STOCKHAM && (size_t)R[0] == N && (N == 1 || lf_get_small((int)N, fwd))) ? 1 : 0;
+     if (s == 1) {
+          if ((size_t)R[0] != N) return 0;
+          if (mode == LF_STOCKHAM) return (N == 1 || lf_get_small((int)N, fwd)) ? 1 : 0;
+          /* LF_CFUSED with s = 1: the interleaved small transform */
+          if (mode == LF_CFUSED) return (N <= 64 && lf_get_csmall((int)N, fwd)) ? 1 : 0;
+          return 0;
+     }
      if (mode == LF_CFUSED || mode == LF_CTWO) {
           static const int vlcs[] = { 4, 2 };
           if (s != 2 || (size_t)R[0] * (size_t)R[1] != N) return 0;
@@ -99,6 +152,8 @@ int lf_mode_vl(size_t N, int fwd, int s, const int *R, int mode)
           } else if (try_vl(N, fwd, s, R, vl, mode))
                return vl;
      }
+     /* vl = 1 denotes a mixed-radix plan (per-pass vector lengths) */
+     if (mode == LF_STOCKHAM && (N & (N - 1)) && mixed_ok(N, fwd, s, R)) return 1;
      return 0;
 }
 
@@ -140,7 +195,7 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
      p->N = N; p->fwd = fwd; p->s = s; p->vl = vl; p->mode = mode;
      memcpy(p->R, R, (size_t)s * sizeof(int));
      if (s == 1) {
-          p->small = N == 1 ? 0 : lf_get_small((int)N, fwd);
+          p->small = N == 1 ? 0 : mode == LF_CFUSED ? lf_get_csmall((int)N, fwd) : lf_get_small((int)N, fwd);
           p->direct = p->small ? p->small : copy1;
           return p;
      }
@@ -158,7 +213,12 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
           return p;
      }
      if (mode == LF_FUSED) p->fused = lf_get_fused(R[0], R[1], vl, fwd);
-     else if (mode == LF_STOCKHAM) {
+     else if (mode == LF_STOCKHAM && vl == 1) {
+          p->first = lf_get_first(R[0], first_vl(N, R[0], fwd), fwd);
+          for (int t = 1; t < s - 1; ++t) p->mid[t] = lf_get_mid(R[t], pass_vl(nst[t], R[t], fwd, 0), fwd);
+          p->last = lf_get_last(R[s - 1], pass_vl(nst[s - 1], R[s - 1], fwd, 1), fwd);
+          p->buf = lf_alloc(4 * N * sizeof(double));
+     } else if (mode == LF_STOCKHAM) {
           p->first = lf_get_first(R[0], vl, fwd);
           for (int t = 1; t < s - 1; ++t) p->mid[t] = lf_get_mid(R[t], vl, fwd);
           p->last = lf_get_last(R[s - 1], vl, fwd);

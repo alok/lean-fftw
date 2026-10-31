@@ -44,5 +44,7 @@ lf_first_fn lf_get_first(int R, int vl, int fwd);
 lf_mid_fn lf_get_mid(int R, int vl, int fwd);
 lf_last_fn lf_get_last(int R, int vl, int fwd);
 lf_small_fn lf_get_small(int N, int fwd);
+/* whole small transform on interleaved complex vectors (__m128d), N not a power of two */
+lf_small_fn lf_get_csmall(int N, int fwd);
 
 #endif
