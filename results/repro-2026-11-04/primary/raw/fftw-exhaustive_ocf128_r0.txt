@@ -1,0 +1,1 @@
+Problem: ocf128, setup: 38.00 us, time: 112.00 ns, ``mflops'': 40000.174

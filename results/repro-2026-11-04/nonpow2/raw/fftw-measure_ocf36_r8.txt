@@ -1,0 +1,1 @@
+Problem: ocf36, setup: 8.00 us, time: 40.03 ns, ``mflops'': 23246.395

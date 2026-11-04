@@ -8,6 +8,10 @@ competitor on one machine, and numbers are only compared within a run.
 * **Current: Sapphire Rapids, i0–i9** (2026-10-31, [`results/spr-i9/`](../results/spr-i9)).
 * Earlier: Sapphire Rapids, i0–i7 (2026-10-17, [`results/spr-i7/`](../results/spr-i7)).
 * Earlier: Cascade Lake, i0–i6 (2026-10-17, [`results/clx-final/`](../results/clx-final)).
+* **Independent reproduction of i9** (2026-11-04, [REPRODUCTION.md](REPRODUCTION.md),
+  [`results/repro-2026-11-04/`](../results/repro-2026-11-04)): G = 0.828, CI [0.815, 0.853],
+  against a freshly built FFTW with regenerated wisdom. The small-size margin reproduces.
+  The N ≥ 1024 win reported below does not: the rerun measures 1.03 there.
 
 A run of i0–i8 on 2026-10-31 ([`results/spr-i8/`](../results/spr-i8)) found the code
 placement regression that i9 fixes (see ITERATIONS.md) and is kept for the record.

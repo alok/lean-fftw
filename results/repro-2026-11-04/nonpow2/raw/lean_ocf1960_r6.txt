@@ -1,0 +1,1 @@
+Problem: ocf1960, setup: 121.47 ms, time: 3.54 us, ``mflops'': 30313.865

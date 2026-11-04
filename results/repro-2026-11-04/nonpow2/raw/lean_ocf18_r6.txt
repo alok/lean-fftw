@@ -1,0 +1,1 @@
+Problem: ocf18, setup: 60.29 ms, time: 22.34 ns, ``mflops'': 16797.144

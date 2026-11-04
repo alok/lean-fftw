@@ -1,0 +1,1 @@
+Problem: ocf16384, setup: 306.00 us, time: 31.80 us, ``mflops'': 36068.953

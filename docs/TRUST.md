@@ -44,13 +44,17 @@ iteration with masked loads and stores (inactive lanes are loaded as zero and ne
 stored). Every lane computes the same operations as the scalar kernel, so the masked
 iteration is bit-identical too, and the tests include sizes where it runs in every pass. libbench2
 `--verify` additionally checks the plan the planner actually picks, for N = 1 to 2^18.
+`tools/c/xcheck.c` checks that plan **bit for bit** against `refTransform` with the
+radices the planner chose, in and out of place, on random inputs. It ran at all 36
+benchmark sizes, three times, with 0 mismatches ([REPRODUCTION.md](REPRODUCTION.md)).
 A test is evidence for the inputs it runs,
 not a proof for all inputs, and that is the remaining gap between the proofs and the
 running code.
 
 Also trusted as is: the twiddle tables. They are computed by Lean (`Trig.cosSin2PiTable`)
 and passed to C, so C and `refTransform` use the same values. Their accuracy (τ) is a
-hypothesis of the error theorems, not proved.
+hypothesis of the error theorems, not proved. It is measured at 0.502 ulp
+(`tools/c/twcheck.c`), and the kernel constants (κ) at 0.945 ulp (`tools/kappa.py`).
 
 ## The generic engine (everything else)
 

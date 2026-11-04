@@ -1,0 +1,1 @@
+Problem: ocf8192, setup: 173.00 us, time: 15.20 us, ``mflops'': 35040.134

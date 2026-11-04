@@ -1,0 +1,1 @@
+Problem: ocf27000, setup: 710.00 us, time: 73.32 us, ``mflops'': 27105.675
