@@ -33,3 +33,6 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.dftSum_pfa
 #print axioms LeanFFTW.Gen.pfaDFT_spec
 #print axioms LeanFFTW.Gen.bflySym_spec
+#print axioms LeanFFTW.Cost.eval_stockhamQ
+#print axioms LeanFFTW.Cost.cost_stockhamQ
+#print axioms LeanFFTW.Cost.stockhamQ_dft_and_cost

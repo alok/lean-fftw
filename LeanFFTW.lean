@@ -5,3 +5,4 @@ import LeanFFTW.Proof.Kernel
 import LeanFFTW.Proof.Butterfly
 import LeanFFTW.Proof.Stockham
 import LeanFFTW.Proof.FloatError
+import LeanFFTW.Proof.Cost
