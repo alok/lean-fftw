@@ -40,6 +40,9 @@ int lf_set_blocking(lf_plan *p, int T, size_t Q);
 /* Size and schedule of a plan. */
 int lf_plan_info(const lf_plan *p, int *mode, int *T, size_t *Q);
 
+/* Radix sequence of a plan, stored to R; returns its length. */
+int lf_plan_radix_seq(const lf_plan *p, int *R);
+
 void lf_destroy(lf_plan *p);
 
 /* Number of doubles of the twiddle tables of a radix sequence. */

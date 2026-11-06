@@ -338,6 +338,12 @@ int lf_plan_info(const lf_plan *p, int *mode, int *T, size_t *Q)
      return p->s;
 }
 
+int lf_plan_radix_seq(const lf_plan *p, int *R)
+{
+     memcpy(R, p->R, (size_t)p->s * sizeof(int));
+     return p->s;
+}
+
 void lf_destroy(lf_plan *p)
 {
      if (!p) return;

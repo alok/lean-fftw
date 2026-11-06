@@ -68,4 +68,14 @@ def passCost (W : Weights) (fwd : Bool) (N : Nat) (rs : Array Nat) (t : Nat) : N
 def stockhamCost (W : Weights) (fwd : Bool) (N : Nat) (rs : Array Nat) : Nat :=
   ((List.range rs.size).map (passCost W fwd N rs)).sum
 
+/-- `stockhamCost`, with the cost of a butterfly of radix `R` (twiddled or not) read from a
+table `c` instead of regenerating the kernel. -/
+def stockhamCostBy (c : Nat → Bool → Nat) (N : Nat) (rs : Array Nat) : Nat :=
+  ((List.range rs.size).map fun t => (N / rs.getD t 1) * c (rs.getD t 1) (t ≥ 1)).sum
+
+/-- With the table of the generated kernels, `stockhamCostBy` is `stockhamCost`. -/
+theorem stockhamCost_eq_by (W : Weights) (fwd : Bool) (N : Nat) (rs : Array Nat) :
+    stockhamCost W fwd N rs =
+      stockhamCostBy (fun R tw => bflyCost W (butterflyK fwd R tw) R tw) N rs := rfl
+
 end LeanFFTW.Gen
