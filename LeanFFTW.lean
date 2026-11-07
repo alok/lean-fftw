@@ -7,3 +7,4 @@ import LeanFFTW.Proof.Stockham
 import LeanFFTW.Proof.FloatError
 import LeanFFTW.Proof.Cost
 import LeanFFTW.Proof.InPlace
+import LeanFFTW.Proof.Native

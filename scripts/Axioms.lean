@@ -39,3 +39,5 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.inplaceWith_eq_stockhamWith
 #print axioms LeanFFTW.Gen.inplaceWith_exact
 #print axioms LeanFFTW.Gen.ipLeaf_scatter
+#print axioms LeanFFTW.Native.exec_eq_refTransform
+#print axioms LeanFFTW.Native.execInto_eq_refTransform
