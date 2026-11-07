@@ -27,3 +27,20 @@ lean_lib LeanFFTWExec where
   roots := #[`LeanFFTW.FFI]
   globs := #[.one `LeanFFTW.FFI, .submodules `LeanFFTW.Core, .submodules `LeanFFTW.Gen,
     .submodules `LeanFFTW.Plan]
+
+/-- The Lean-compiled backend: generated kernels over unboxed `FloatArray`. -/
+lean_lib LeanFFTWNative where
+  roots := #[`LeanFFTW.Native.Exec]
+  globs := #[.submodules `LeanFFTW.Native]
+  -- the C engine's flags: FMA instructions for `Float.fma`, no contraction of other operations;
+  -- and enough runtime alias checks for clang to vectorize the loops over butterflies
+  moreLeancArgs := #["-march=native", "-mprefer-vector-width=512", "-ffp-contract=off",
+    "-mllvm", "-runtime-memory-check-threshold=8192",
+    "-mllvm", "-vectorize-memory-check-threshold=8192",
+    "-mllvm", "-slp-recursion-max-depth=200"]
+
+/-- Bit-exact check and timing of the Lean-compiled backend. -/
+lean_exe native_bench where
+  root := `NativeBench
+  srcDir := "scripts"
+  moreLeancArgs := #["-march=native", "-ffp-contract=off"]
