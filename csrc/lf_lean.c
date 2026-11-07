@@ -10,6 +10,7 @@
 extern lean_object *lfftw_fast_base_table(lean_object *spec);
 extern lean_object *lfftw_fast_reference(lean_object *spec, lean_object *inp);
 extern lean_object *lfftw_enumerate(size_t N, uint8_t fwd);
+extern lean_object *lfftw_leaf_offsets(lean_object *spec);
 extern lean_object *lfftw_plan_measure(size_t N, uint8_t fwd, size_t in, size_t out, lean_object *w);
 extern lean_object *initialize_lean_x2dfftw_LeanFFTW_FFI(uint8_t builtin);
 extern void lean_initialize_runtime_module(void);
@@ -53,6 +54,19 @@ void lf_lean_reference(size_t N, int fwd, int s, const int *R, const double *in,
      for (int t = 0; t < s; ++t) spec[3 + t] = (double)R[t];
      res = lfftw_fast_reference(farray(spec, 3 + (size_t)s), farray(in, 2 * N));
      memcpy(out, lean_float_array_cptr(res), 2 * N * sizeof(double));
+     lean_dec(res);
+}
+
+void lf_leaf_offsets(size_t N, int s, const int *R, unsigned *ofs)
+{
+     double spec[2 + LF_MAXPASS];
+     lean_object *res;
+     const double *d;
+     spec[0] = (double)N; spec[1] = (double)s;
+     for (int t = 0; t < s; ++t) spec[2 + t] = (double)R[t];
+     res = lfftw_leaf_offsets(farray(spec, 2 + (size_t)s));
+     d = lean_float_array_cptr(res);
+     for (size_t i = 0; i < N / (size_t)R[0]; ++i) ofs[i] = (unsigned)d[i];
      lean_dec(res);
 }
 

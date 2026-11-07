@@ -45,6 +45,10 @@ int lf_plan_radix_seq(const lf_plan *p, int *R);
 
 void lf_destroy(lf_plan *p);
 
+/* Leaf offsets of the in-place schedule, ofs[d] for d < N/R[0] (provided by the Lean
+   library, csrc/lf_lean.c). */
+void lf_leaf_offsets(size_t N, int s, const int *R, unsigned *ofs);
+
 /* Number of doubles of the twiddle tables of a radix sequence. */
 size_t lf_twiddle_size(size_t N, int s, const int *R);
 

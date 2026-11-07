@@ -36,3 +36,6 @@ import LeanFFTW
 #print axioms LeanFFTW.Cost.eval_stockhamQ
 #print axioms LeanFFTW.Cost.cost_stockhamQ
 #print axioms LeanFFTW.Cost.stockhamQ_dft_and_cost
+#print axioms LeanFFTW.Gen.inplaceWith_eq_stockhamWith
+#print axioms LeanFFTW.Gen.inplaceWith_exact
+#print axioms LeanFFTW.Gen.ipLeaf_scatter

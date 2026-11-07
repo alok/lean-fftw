@@ -157,18 +157,6 @@ int lf_mode_vl(size_t N, int fwd, int s, const int *R, int mode)
      return 0;
 }
 
-/* offset of leaf d in the in-place schedule: d = r_{s-1} + R_{s-1}(r_{s-2} + ...), offset
-   = sum_{t>=1} r_t ns_t */
-static size_t leaf_ofs(size_t d, int s, const int *R, const size_t *nst)
-{
-     size_t o = 0;
-     for (int t = s - 1; t >= 1; --t) {
-          o += (d % (size_t)R[t]) * nst[t];
-          d /= (size_t)R[t];
-     }
-     return o;
-}
-
 /* Work arrays of 1 MiB or more are 2 MiB aligned and marked for transparent huge pages:
    fewer TLB misses, and cache-set placement that does not depend on which physical 4 KiB
    pages a particular allocation received. */
@@ -229,8 +217,15 @@ lf_plan *lf_plan_radices(size_t N, int fwd, int s, const int *R, const double *b
           for (int t = 1; t < s - 1; ++t) p->dit[t] = lf_get_dit(R[t], vl, fwd);
           p->ditlast = lf_get_ditlast(R[s - 1], vl, fwd);
           p->gofs = malloc(ng * sizeof(unsigned));
-          for (size_t g = 0; g < ng; ++g) p->gofs[g] = (unsigned)leaf_ofs(g * (size_t)vl, s, R, nst);
-          for (int l = 0; l < vl; ++l) p->ldel[l] = (unsigned)leaf_ofs((size_t)l, s, R, nst);
+          {
+               /* leaf d writes at ofs[d] = digitRev(R[1..s-1], d) * R[0], computed by Lean
+                  (LeanFFTW.Gen.leafOffsets; inplaceWith_eq_stockhamWith is about it) */
+               unsigned *ofs = malloc(N / (size_t)R[0] * sizeof(unsigned));
+               lf_leaf_offsets(N, s, R, ofs);
+               for (size_t g = 0; g < ng; ++g) p->gofs[g] = ofs[g * (size_t)vl];
+               for (int l = 0; l < vl; ++l) p->ldel[l] = ofs[l];
+               free(ofs);
+          }
           p->buf = lf_alloc(2 * N * sizeof(double));
      }
      {
