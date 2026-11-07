@@ -5,7 +5,10 @@ are reported. The machine is a cloud VM whose CPU changed when the container was
 re-provisioned (amendments 1, 3 and 4), so each run re-measures every iteration and every
 competitor on one machine, and numbers are only compared within a run.
 
-* **Current: Sapphire Rapids, i0–i9** (2026-10-31, [`results/spr-i9/`](../results/spr-i9)).
+* **Latest: Granite Rapids, i9 and i10** (2026-11-07, [`results/gnr-i10/`](../results/gnr-i10),
+  section below): G(i10) = 0.814, CI [0.794, 0.829]. i10 is the Lean-driven round
+  ([LEAN_DRIVEN.md](LEAN_DRIVEN.md)): planner in Lean, in-place address tables from Lean.
+* Sapphire Rapids, i0–i9 (2026-10-31, [`results/spr-i9/`](../results/spr-i9)).
 * Earlier: Sapphire Rapids, i0–i7 (2026-10-17, [`results/spr-i7/`](../results/spr-i7)).
 * Earlier: Cascade Lake, i0–i6 (2026-10-17, [`results/clx-final/`](../results/clx-final)).
 * **Independent reproduction of i9** (2026-11-04, [REPRODUCTION.md](REPRODUCTION.md),
@@ -18,7 +21,28 @@ placement regression that i9 fixes (see ITERATIONS.md) and is kept for the recor
 
 ![optimization history](../results/optimization.gif)
 
-## Current run: Sapphire Rapids, i0–i9
+The GIF is the Sapphire Rapids history (i0–i9); the Granite Rapids run below measured only i9
+and i10.
+
+## Latest run: Granite Rapids, i9 and i10
+
+Granite Rapids (family 6 model 173, 2.3 GHz, 4 vCPUs, KVM). FFTW 3.3.10 with wisdom generated
+from scratch on this CPU for each planner mode (MEASURE, PATIENT, EXHAUSTIVE), then 10
+interleaved process runs per (implementation, size), pinned to CPU 0 (amendment 5). MKL is not
+installed on this machine.
+
+* **G(i10 / FFTW best mode) = 0.814, 95% CI [0.794, 0.829]**; against each mode: MEASURE
+  0.740, PATIENT 0.801, EXHAUSTIVE 0.791.
+* **i10 / i9 = 0.990, CI [0.963, 1.008]**: the Lean planner (race ordered and pruned by the
+  proved operation counts) picks plans as fast as the exhaustive C-era search.
+* Per size (i10 / FFTW best): 0.28, 0.32, 0.48, 0.57, 0.58, 0.75, 0.88 for N = 2 … 128;
+  0.96 at 256, 1.22 at 512, 0.96–1.08 from 1024 to 32768, 1.12 at 65536, 1.34 at 2^17 and
+  1.31 at 2^18. The large-size gap is larger on this CPU than on Sapphire Rapids.
+* libbench2 `--verify` passes at all 18 sizes. Accuracy (libbench2 `--accuracy`, 10 rounds): Lean FFTW's forward L2 error is within 1.05× of FFTW PATIENT's at every
+  size. FFTW's exhaustive bigcheck on the i10 binary: 50,702 of 50,702 problems pass and 30 of
+  30 unsupported problems are rejected.
+
+## Run of 2026-10-31: Sapphire Rapids, i0–i9
 
 ### Setup
 

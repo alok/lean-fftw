@@ -321,3 +321,28 @@ Finding: on this run, Lean FFTW is faster than FFTW for N ≥ 1024 (0.93 for i9,
 i7), where the i7 run of 2026-10-17 had measured 1.11 for the same i7 binary. The large-N
 schedule tuning planned for this round was therefore not needed on this evidence; the
 remaining clear power-of-two loss is N = 512 (1.11).
+
+## i10: Lean drives the planner and the in-place schedule (commits 0ccef5f–27a03db)
+
+No kernel changes. Moved into Lean, with proofs, and measured ([LEAN_DRIVEN.md](LEAN_DRIVEN.md)):
+
+* **Cost counts as a CSLib program.** `stockhamQ` is proved to evaluate to the Stockham
+  schedule and to cost exactly `stockhamCost`, the counts the planner uses.
+* **Planner in Lean.** Search ordered by proved operations per lane, candidates over 1.5× the
+  best count of their schedule pruned, slow first measurements dropped. Experiment first:
+  ranking by fitted cost models alone loses up to 2.3× (held-out regret,
+  `results/lean-driven/costmodel-holdout.txt`), so the counts only order and prune; measurement
+  still chooses. Planning at 2^18: 24.5 s → 8.7 s, same plan speed.
+* **In-place schedule proved** equal to the Stockham schedule; the C executor's leaf offsets
+  now come from the Lean function the proof is about.
+* **Lean-compiled backend** (`LeanFFTW/Native`, not used by the benchmark binary): proved equal
+  to `refTransform`, 2,236 plans bit-exact, 1.6–2.9× the C engine's time from N = 1024 up. The
+  tuning steps and the two schedules that lost are in LEAN_DRIVEN.md and draft PR #1.
+
+Results (Granite Rapids run, [RESULTS.md](RESULTS.md)): G(i10) = 0.814 [0.794, 0.829];
+i10 / i9 = 0.990 [0.963, 1.008].
+
+Tests: `test_fast 14 18` (unlimited stack): 3,726 plans, 0 mismatches; `test_fast mixed 300
+1000 3000 4725 7203 10368`: 6,496 plans, 0 mismatches; libbench2 `--verify` at all primary
+sizes; bigcheck 50,702 of 50,702 pass and 30 of 30 rejected; accuracy within 1.05× of FFTW.
+Axiom audit: 40 theorems, standard axioms only.

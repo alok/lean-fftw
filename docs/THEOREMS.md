@@ -109,6 +109,43 @@ The proof needs only Lean core (the executable library does not depend on Mathli
 holds because the fast loops perform the same `Float` operations as `exec floatOps`, in
 the same order, from the same starting value `0`.
 
+### The in-place schedule (`Proof/InPlace.lean`)
+
+`inplaceWith A fwd N rs twOf x` (`Gen/InPlace.lean`) is the schedule the C engine's `LF_INPLACE`
+mode runs: the leaf pass writes leaf `d`'s outputs at `digitRev(d)·R₀ + r` (mixed-radix digit
+reversal), and every later pass rewrites its butterflies' positions in place. The proof carries
+a layout invariant (`IPInv`) through the passes.
+
+| Theorem | Statement |
+|---|---|
+| `ipLeaf_scatter` | position `digitRev L d · R₀ + r` after the leaf pass holds output `r` of the leaf DFT of `x[d + i·N/R₀]` (this is the address table the C executor now reads from Lean, `leafOffsets`) |
+| `inplaceWith_eq_stockhamWith` | for any arithmetic `A`, positive radices with `N = ∏ rs`: `inplaceWith A fwd N rs twOf x = stockhamWith A fwd N rs twOf x`. Over binary64 the two schedules agree bit for bit |
+| `inplaceWith_exact` | over the reals, the in-place schedule computes the DFT |
+
+### The cost model as a CSLib query program (`Proof/Cost.lean`)
+
+The Stockham schedule is also written as a program in CSLib's free-monad query framework
+(`Cslib.Algorithms.Lean.Query`), whose queries are a kernel operation, a load and a store
+(`EngineQ`). Evaluating it with the honest oracle gives the transform; counting its queries
+with weights gives its cost. The planner ranks candidates by these counts.
+
+| Theorem | Statement |
+|---|---|
+| `eval_stockhamQ` | `FreeM.eval (EngineQ.honest A) (stockhamQ fwd N rs twOf z) = stockhamWith A fwd N rs twOf z` |
+| `cost_stockhamQ` | for every oracle, `FreeM.cost oracle (EngineQ.weight W) (stockhamQ …) = stockhamCost W fwd N rs`, the closed-form count (`Gen/OpCount.lean`) the planner computes |
+| `stockhamQ_dft_and_cost` | over the reals with exact twiddles, the same program computes the DFT **and** costs `stockhamCost W fwd N rs` |
+
+### The Lean-compiled backend (`Proof/Native.lean`)
+
+`LeanFFTW.Native.exec p x` (`Native/Exec.lean`) is defined as `inplaceWith floatArith` of its
+plan. The compiler runs generated straight-line Lean kernels instead (`@[implemented_by]`,
+see [TRUST.md](TRUST.md)).
+
+| Theorem | Statement |
+|---|---|
+| `exec_eq_refTransform` | for every plan `p` of the backend, `exec p x = refTransform p.fwd p.N p.rs x` |
+| `execInto_eq_refTransform` | the same for the variant that writes into a caller's buffer |
+
 ## 3. Floating-point error bounds
 
 ### Abstract rounding model (`Proof/RoundError.lean`)

@@ -1,0 +1,1 @@
+Problem: ocf4096, setup: 602.61 ms, time: 6.77 us, ``mflops'': 36275.062

@@ -25,6 +25,9 @@ source of the test harness; Lean FFTW never links or calls it.
   N = 6 to 1.7× at N = 75600. Planning, which is not counted, is far slower than FFTW's: Lean
   FFTW measures every candidate plan and has no wisdom. In the repo's run MKL was slower than
   both (MKL was not part of the rerun). Details: [docs/RESULTS.md](docs/RESULTS.md).
+  On a third CPU (Granite Rapids, 2026-11-07, FFTW wisdom regenerated) the current commit
+  gives **0.814 (CI [0.794, 0.829])**, again all from small sizes; there FFTW is ahead from
+  N = 512 up, by 1.3× at the two largest sizes.
 * **Accuracy.** libbench2's multiple-precision check gives an L2 error within 1.08× of
   FFTW's at every primary size and 1.11× at the secondary sizes (rerun: within 1.04×).
 * **Tests.** FFTW's own harness (libbench2 `--verify` driven by `tests/check.pl`) passes
@@ -41,6 +44,10 @@ source of the test harness; Lean FFTW never links or calls it.
     loose: 18× above the observed error at N = 4, and up to about 10⁵× at the largest sizes.
     The twiddle (τ) and constant (κ) accuracies it assumes were measured at 0.502 ulp and
     0.945 ulp ([docs/REPRODUCTION.md](docs/REPRODUCTION.md));
+  * the in-place schedule the fast engine runs equals the Stockham schedule for every
+    arithmetic, and the Lean-compiled backend equals the binary64 reference;
+  * the planner's operation counts are the query costs of a CSLib program that is also
+    proved to compute the DFT;
   * optimizations are proved too: the generator's rewrites (FMA contraction,
     tan-factored twiddle rotations) and its algorithms for radices that are not powers
     of two (paired odd-length DFTs, factored mixed radix, the Good–Thomas prime factor
@@ -48,6 +55,18 @@ source of the test harness; Lean FFTW never links or calls it.
     code is a `@[csimp]` replacement proved equal to its specification.
 
   Details: [docs/THEOREMS.md](docs/THEOREMS.md).
+
+## Lean drives the generator, the planner and a Lean-compiled backend
+
+Hand-written, the library is about 8,500 lines of Lean to 600 of C. The C that remains is
+the executor loops and FFI glue; the 193,000 lines of SIMD kernels are printed by the Lean
+generator. Lean also does the planning, with its search ordered and pruned by operation
+counts that are proved through a CSLib query program. It holds the address tables of the
+in-place schedule, which is proved equal to the Stockham schedule. And it can run the whole
+transform itself: `LeanFFTW.Native` compiles the same generated kernels as Lean code over
+unboxed `FloatArray`, is proved to compute `refTransform`, and takes 1.6–2.9× the time
+of the SIMD C engine from N = 1024 up. [docs/LEAN_DRIVEN.md](docs/LEAN_DRIVEN.md) has the
+measurements, what the compiler reports led to, and what did not work.
 
 ## How the pieces fit
 
@@ -75,6 +94,8 @@ analysed. [docs/TRUST.md](docs/TRUST.md) lists every link and how it is establis
 | `LeanFFTW/Spec` | the DFT specification |
 | `LeanFFTW/Gen` | codelet generator (symbolic DFT, simplifier, CSE, vectorizer, C printer) |
 | `LeanFFTW/Core` | generic engine (mixed radix, r2c/c2r, r2r, guru problems), twiddles |
+| `LeanFFTW/Plan` | the planner (search, pruning by proved counts, measurement) |
+| `LeanFFTW/Native` | the Lean-compiled backend (generated kernels, executor, unsafe primitives) |
 | `LeanFFTW/Proof` | correctness and floating-point proofs |
 | `csrc` | fast engine executor, generated kernels, Lean glue, differential test |
 | `bench/backends` | libbench2 backends (Lean FFTW, MKL) |
@@ -84,7 +105,7 @@ analysed. [docs/TRUST.md](docs/TRUST.md) lists every link and how it is establis
 
 ## Building
 
-Requirements: Lean 4.35.0 (`lean-toolchain`), the Mathlib and FloatLib revisions in
+Requirements: Lean 4.35.0 (`lean-toolchain`), the Mathlib, CSLib and FloatLib revisions in
 `lake-manifest.json`, gcc, and an x86-64 CPU with AVX-512 (F and VL) for the fast engine.
 
 ```sh
@@ -94,6 +115,7 @@ LEAN=<lean-4.35.0 dir> OUT=build FFTW_SRC=<fftw-3.3.10 tree> scripts/build.sh
 ulimit -s unlimited; build/test_fast 14 18   # bit-exact differential test, powers of two
 build/test_fast mixed 300                    # the same for 13-smooth sizes
 build/bench-lean -s ocf1024                  # libbench2 speed run
+lake build native_bench && .lake/build/bin/native_bench check 12   # Lean backend, bit-exact
 ```
 
 `FFTW_SRC` is only needed for libbench2 (`libbench2.a`), FFTW's benchmark harness; leave it

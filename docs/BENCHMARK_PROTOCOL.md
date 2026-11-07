@@ -106,3 +106,9 @@ commit, environment variables affecting threading (`MKL_THREADING_LAYER`,
    (`/root/results/wisdom-spr-i7`). The secondary non-power-of-two workload, now that those
    sizes run in the fast engine, is measured against FFTW in all three modes instead of
    MEASURE only.
+5. *2026-11-07, before measuring i10.* The machine is now Granite Rapids (family 6 model 173,
+   2.3 GHz). No protocol rule changes: FFTW wisdom was generated from scratch on this CPU for
+   each mode (`/root/results/wisdom-gnr`), and one interleaved run measures i10, i9 and FFTW
+   in all three modes. MKL is not installed on this machine and is not part of the run. The
+   planner default changed in i10 (race order with pruning, `LF_PLANNER=exhaustive` restores
+   the old search); setup time is reported but not part of the metric, as before.
