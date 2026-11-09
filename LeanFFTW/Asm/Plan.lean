@@ -319,6 +319,8 @@ inductive Mode where
   | ctwo
   /-- the in-place schedule -/
   | inplace
+  /-- Stockham passes on interleaved data (any radices) -/
+  | stockham
   deriving DecidableEq, Repr, Inhabited
 
 /-- Plans of the whole-transform kernels. -/
@@ -339,12 +341,66 @@ def smallPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (mode : Mode) (inplace : B
         return { root := .kern (ctwoName rs[0]! rs[1]! vlc fwd) #[.blob 0], blobs := #[.space (16 * N)] }
       else
         return { root := .kern (ctwoName rs[0]! rs[1]! vlc fwd) #[.imm 0] }
-  | .inplace => none
+  | .inplace | .stockham => none
+
+/-! ## The Stockham schedule -/
+
+/-- Twiddles of a Stockham pass `(R, ns)` in the order the loop reads them: for each vector
+`v` of 8 columns, for `r = 1 … R-1`: 8 real parts, 8 imaginary parts, lane `p` being column
+`8v + σ p` (zero beyond `ns`). Entry `(r, k)` is `ω_N^(r·k·N/(ns·R))`. -/
+def stkTwiddles (base : FloatArray) (N R ns : Nat) : FloatArray := Id.run do
+  let step := N / (ns * R)
+  let nv := (ns + 7) / 8
+  let mut t := FloatArray.emptyWithCapacity (16 * (R - 1) * nv)
+  for v in [0:nv] do
+    for r in [1:R] do
+      for part in [0:2] do
+        for p in [0:8] do
+          let kk := 8 * v + sigma[p]!
+          t := t.push (if kk < ns then base[2 * (r * kk * step) + part]! else 0.0)
+  return t
+
+/-- Masks of the two vectors of a row holding `tl < 8` complex numbers. -/
+def tailMask (tl : Nat) : Int × Int :=
+  ((2 ^ (min (2 * tl) 8) - 1 : Nat), (2 ^ (max (2 * tl) 8 - 8) - 1 : Nat))
+
+/-- The plan of the Stockham schedule for the radices `rs` (any product). The passes
+alternate between two buffers; the first reads `in` and the last writes `out`, so
+`in == out` is allowed. -/
+def stockhamPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (base : FloatArray) : Option PlanSrc := do
+  let s := rs.size
+  guard (s ≥ 1 && rs.all stkRadices.contains)
+  let nst : Array Nat := (Array.range (s + 1)).map fun t => passNs rs t
+  guard (nst[s]! == N)
+  let mut blobs : Array Blob := #[]
+  -- work arrays (the first pass writes whole vectors of butterflies only into the frame)
+  let bufs := (Array.range (min (s - 1) 2)).map fun i => i
+  for _ in bufs do blobs := blobs.push (.space (16 * N + 64))
+  let mut nodes : Array PNode := #[]
+  for t in [0:s] do
+    let R := rs[t]!
+    let ns := nst[t]!
+    let NR := N / R
+    let src : PArg := if t == 0 then .imm 0 else .blob ((t - 1) % 2)
+    let dst : PArg := if t == s - 1 then .imm 0 else .blob (t % 2)
+    if t == 0 then
+      let (m0, m1) := tailMask (NR % 8)
+      nodes := nodes.push (.kern (stk0Name R fwd)
+        #[src, dst, .imm (16 * NR), .imm (NR / 8), .imm (NR % 8), .imm m0, .imm m1])
+    else
+      let tw := blobs.size
+      blobs := blobs.push (.floats (stkTwiddles base N R ns))
+      let (m0, m1) := tailMask (ns % 8)
+      nodes := nodes.push (.kern (stkName R fwd)
+        #[src, dst, .blob tw, .imm (16 * NR), .imm (16 * ns), .imm (NR / ns), .imm (ns / 8),
+          .imm (16 * (ns % 8)), .imm (16 * ns * (R - 1)), .imm m0, .imm m1])
+  return { root := .seq nodes, blobs }
 
 /-- The plan of a schedule. -/
 def mkPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (mode : Mode) (T Q : Nat) (inplace : Bool)
     (base : FloatArray) (par : Bool := false) : Option PlanSrc :=
   if mode == .inplace then inplacePlan N fwd rs T Q inplace base par
+  else if mode == .stockham then (if T == 0 && Q == 0 && !par then stockhamPlan N fwd rs base else none)
   else if T == 0 && Q == 0 && !par then smallPlan N fwd rs mode inplace else none
 
 end LeanFFTW.Asm

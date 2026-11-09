@@ -227,14 +227,48 @@ def mutateMain (stride : Nat) : IO UInt32 := do
           for (k, m) in mutants is stride blocks do
             total := total + 1
             tried := tried.insert k (tried.getD k 0 + 1)
-            if check consts sp w m.toList then accepted := accepted.insert k (accepted.getD k 0 + 1)
+            if check consts sp w m.toList then
+              accepted := accepted.insert k (accepted.getD k 0 + 1)
+              -- the first instruction that differs
+              let j := (List.range is.size).find? (fun j => m[j]?.map (·.print) != some (is[j]!.print))
+              IO.println s!"accepted: {fn.name}, {k} at {j.getD 0}: {(j.map fun j => is[j]!.print).getD ""}"
       let acc := accepted.fold (fun n _ v => n + v) 0
       IO.println s!"{blocks} blocks, {total} mutants, {total - acc} rejected, {acc} accepted"
       for (k, n) in tried.toList do
         IO.println s!"  {k}: {n} mutants, {accepted.getD k 0} accepted"
       return if acc * 100 ≤ total then 0 else 1
 
+/-- Stockham plans of sizes that are not powers of two: every radix sequence of small sizes,
+and the planner's choice for larger ones, against the Lean reference, bit for bit. -/
+def stkMain (args : List String) : IO UInt32 := do
+  let hi := (args.getD 0 "200").toNat!
+  let mut bad := 0
+  let mut n := 0
+  for N in [2:hi + 1] do
+    if Planner.isPow2 N then continue
+    for fwd in [true, false] do
+      let base := baseTable N fwd
+      for c in Planner.enumerate N do
+        if c.mode != .stockham then continue
+        let some src := mkPlan N fwd c.rs c.mode 0 0 false base | continue
+        let plan ← src.build true
+        let x := randArr (2 * N) (N + 7)
+        let ref := refTransform fwd N c.rs x
+        for inplace in [false, true] do
+          n := n + 1
+          let y := if inplace then randArr (2 * N) (N + 7) else zeros (2 * N + 24)
+          plan.run (if inplace then addr y else addr x) (addr y)
+          let y' : FloatArray := if inplace then y else ⟨y.data.extract 0 (2 * N)⟩
+          -- the words after the output must be untouched
+          let clean := inplace || (y[2 * N]! == 0.0 && y[2 * N + 1]! == 0.0 && y[2 * N + 23]! == 0.0)
+          if (firstDiff y' ref).isSome || !clean then
+            bad := bad + 1
+            if bad ≤ 10 then IO.println s!"MISMATCH N={N} fwd={fwd} rs={c.rs.toList} inplace={inplace} at {firstDiff y' ref} clean={clean}"
+  IO.println s!"Stockham plans: {n} runs, {bad} mismatches"
+  return if bad == 0 then 0 else 1
+
 def main (args : List String) : IO UInt32 := do
+  if args.head? == some "stk" then return ← stkMain args.tail
   if args.head? == some "mutate" then return ← mutateMain ((args.getD 1 "1").toNat!)
   if args.head? == some "plan" then return ← planMain args.tail
   if args.head? == some "time" then return ← timeMain args.tail

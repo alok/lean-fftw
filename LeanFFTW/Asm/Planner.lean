@@ -37,6 +37,11 @@ structure Cand where
 
 def firsts : Array Nat := #[2, 4, 8, 16, 32]
 def mids : Array Nat := #[32, 16, 8, 4, 2]
+/-- radices of the plans of sizes that are not powers of two -/
+def firstsM : Array Nat := #[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]
+def midsM : Array Nat := #[16, 15, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
+
+def isPow2 (N : Nat) : Bool := N &&& (N - 1) == 0
 def maxPass : Nat := 24
 
 /-- Schedules that cover a radix sequence. -/
@@ -47,7 +52,8 @@ def modesOf (N : Nat) (rs : Array Nat) : List Mode :=
   (if two cfusedSet then [.cfused] else []) ++
   (if two ctwoSet then [.ctwo] else []) ++
   (if rs.size ≥ 2 && leafRadices.contains rs[0]! && rs.all ditRadices.contains &&
-      N / rs[0]! ≥ 8 then [.inplace] else [])
+      N / rs[0]! ≥ 8 then [.inplace] else []) ++
+  (if !isPow2 N && rs.all stkRadices.contains then [.stockham] else [])
 
 def emitAll (N : Nat) (rs : Array Nat) (acc : Array Cand) : Array Cand :=
   (modesOf N rs).foldl (fun acc mode => acc.push { rs, mode }) acc
@@ -55,8 +61,8 @@ def emitAll (N : Nat) (rs : Array Nat) (acc : Array Cand) : Array Cand :=
 /-- Tails of radix sequences for the remaining size `M`. `dir = 0`: non-increasing radices
 (`mids[i]`, `i ≥ lo`); `dir = 1`: non-decreasing and not constant (constant tails are
 enumerated by `dir = 0`). -/
-partial def tails (N : Nat) (rs : Array Nat) (M lo dir : Nat) (first strict : Bool)
-    (acc : Array Cand) : Array Cand :=
+partial def tails (mids : Array Nat) (N : Nat) (rs : Array Nat) (M lo dir : Nat)
+    (first strict : Bool) (acc : Array Cand) : Array Cand :=
   if M == 1 then (if dir == 0 || strict then emitAll N rs acc else acc)
   else if rs.size ≥ maxPass then acc
   else (List.range mids.size).foldl (fun acc i =>
@@ -64,16 +70,17 @@ partial def tails (N : Nat) (rs : Array Nat) (M lo dir : Nat) (first strict : Bo
     else
       let m := mids[i]!
       if M % m == 0 then
-        tails N (rs.push m) (M / m) i dir false (strict || (!first && i != lo)) acc
+        tails mids N (rs.push m) (M / m) i dir false (strict || (!first && i != lo)) acc
       else acc) acc
 
-/-- All candidate plans of a power of two `N` (radix sequences × schedules). -/
+/-- All candidate plans of `N` (radix sequences × schedules). -/
 def enumerate (N : Nat) : Array Cand := Id.run do
+  let (fs, ms) := if isPow2 N then (firsts, mids) else (firstsM, midsM)
   let mut acc : Array Cand := emitAll N #[N] #[]
-  for f in firsts do
+  for f in fs do
     if N % f == 0 && N > f then
-      acc := tails N #[f] (N / f) 0 0 true false acc
-      acc := tails N #[f] (N / f) (mids.size - 1) 1 true false acc
+      acc := tails ms N #[f] (N / f) 0 0 true false acc
+      acc := tails ms N #[f] (N / f) (ms.size - 1) 1 true false acc
   return acc
 
 /-! ## Measurement -/
@@ -138,6 +145,7 @@ def counts (tab : Std.HashMap (Nat × Bool) (Nat × Nat)) (N : Nat) (c : Cand) :
 
 def modeTag : Mode → String
   | .csmall => "csmall" | .cfused => "cfused" | .ctwo => "ctwo" | .inplace => "inplace"
+  | .stockham => "stockham"
 
 /-- Optional log of every measured candidate (`LF_PLAN_LOG=<file>`). -/
 def logCands (N : Nat) (fwd : Bool) (stage : String) (cs : Array Cand) : IO Unit := do
@@ -177,7 +185,8 @@ def pruneCut : Float := 1.5
 def raceOrder (N : Nat) (fwd : Bool) (cs : Array Cand) : Array Cand := Id.run do
   let tab := bflyTable fwd cs
   let scored := cs.map fun c => (c, opScore tab N c)
-  let key (c : Cand) : Nat := match c.mode with | .csmall => 0 | .cfused => 1 | .ctwo => 2 | .inplace => 3
+  let key (c : Cand) : Nat := match c.mode with
+    | .csmall => 0 | .cfused => 1 | .ctwo => 2 | .inplace => 3 | .stockham => 4
   let mut best : Std.HashMap Nat Float := {}
   for (c, x) in scored do
     if x < best.getD (key c) 1e300 then best := best.insert (key c) x
@@ -263,11 +272,11 @@ def planMeasure (N : Nat) (fwd : Bool) (inp out : USize) (effort : Effort) :
 
 /-- Plan a transform of size `N` on the caller's arrays (`inp == out`: in place); their
 contents are overwritten. Returns the plan's memory (run it with
-`lfa_call(data address, in, out)`), or an empty array when the engine does not cover `N`. -/
+`lfa_call(data address, in, out)`), or an empty array when the engine does not cover `N` (a prime factor above 13). -/
 @[export lfa_plan_measure]
 def planMeasureFFI (N : USize) (fwd : UInt8) (inp out : USize) : IO FloatArray := do
   let n := N.toNat
-  if n < 2 || n &&& (n - 1) != 0 then return FloatArray.empty
+  if n < 2 then return FloatArray.empty
   match ← planMeasure n (fwd != 0) inp out (← effortFromEnv) with
   | some (p, c) =>
       if (← IO.getEnv "LF_PLAN_SHOW").isSome then
