@@ -26,7 +26,7 @@ lean_lib LeanFFTW where
 lean_lib LeanFFTWExec where
   roots := #[`LeanFFTW.FFI]
   globs := #[.one `LeanFFTW.FFI, .submodules `LeanFFTW.Core, .submodules `LeanFFTW.Gen,
-    .submodules `LeanFFTW.Plan]
+    .submodules `LeanFFTW.Plan, .submodules `LeanFFTW.Asm]
 
 /-- The Lean-compiled backend: generated kernels over unboxed `FloatArray`. -/
 lean_lib LeanFFTWNative where
@@ -43,3 +43,15 @@ lean_exe native_bench where
   root := `NativeBench
   srcDir := "scripts"
   moreLeancArgs := #["-march=native", "-ffp-contract=off"]
+
+/-- Writes the assembly of the fast engine (`gen_asm OUT.s`): the code generator, the register
+allocator and the checker of the emitted code all run here, in Lean. -/
+lean_exe gen_asm where
+  root := `GenAsm
+  srcDir := "scripts"
+
+/-- Tests of the assembly engine. Links the assembled engine: build with `scripts/build.sh`. -/
+lean_exe asm_test where
+  root := `AsmTest
+  srcDir := "scripts"
+  moreLinkArgs := #[".lake/build/asm/lf_asm.o"]

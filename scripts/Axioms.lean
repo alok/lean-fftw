@@ -41,3 +41,4 @@ import LeanFFTW
 #print axioms LeanFFTW.Gen.ipLeaf_scatter
 #print axioms LeanFFTW.Native.exec_eq_refTransform
 #print axioms LeanFFTW.Native.execInto_eq_refTransform
+#print axioms LeanFFTW.Asm.check_sound

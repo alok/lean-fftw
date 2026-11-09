@@ -5,14 +5,20 @@
 set -e
 : "${LEAN:?set LEAN}" "${OUT:?set OUT}"
 mkdir -p "$OUT"
-lake build LeanFFTWExec:static
+lake build LeanFFTWExec:static gen_asm
+# the assembly engine: generated, checked and printed by Lean, assembled by `as`
+mkdir -p .lake/build/asm
+.lake/build/bin/gen_asm .lake/build/asm/lf_asm.s
+as .lake/build/asm/lf_asm.s -o .lake/build/asm/lf_asm.o
+lake build asm_test
+cp .lake/build/bin/asm_test "$OUT/asm_test"
 LIB=.lake/build/lib/liblean_x2dfftw_LeanFFTWExec.a
 gcc -O2 -march=native -ffp-contract=off -falign-functions=64 -Werror=incompatible-pointer-types \
     -c csrc/lf_kernels_gen.c -o "$OUT/lf_kernels_gen.o"
 gcc -O2 -Wall -march=native -ffp-contract=off -falign-functions=64 -c csrc/lf_fast.c -o "$OUT/lf_fast.o"
 gcc -O2 -Wall -ffp-contract=off -I"$LEAN/include" -c csrc/lf_lean.c -o "$OUT/lf_lean.o"
 gcc -O2 -Wall -ffp-contract=off -I"$LEAN/include" -c csrc/test_fast.c -o "$OUT/test_fast.o"
-OBJS="$OUT/lf_lean.o $OUT/lf_fast.o $OUT/lf_kernels_gen.o"
+OBJS="$OUT/lf_lean.o $OUT/lf_fast.o $OUT/lf_kernels_gen.o .lake/build/asm/lf_asm.o"
 "$LEAN/bin/leanc" -o "$OUT/test_fast" "$OUT/test_fast.o" $OBJS $LIB -lm
 if [ -n "$FFTW_SRC" ]; then
      gcc -O2 -Wall -ffp-contract=off -falign-functions=64 -falign-loops=64 -I"$FFTW_SRC/libbench2" -I"$FFTW_SRC" -I"$LEAN/include" \

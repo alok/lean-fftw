@@ -6,6 +6,7 @@ import LeanFFTW.Core.FastPlan
 import LeanFFTW.Gen.Stockham
 import LeanFFTW.Plan.Planner
 import LeanFFTW.Gen.InPlace
+import LeanFFTW.Asm.Planner
 
 /-!
 # C entry points of the generic engine

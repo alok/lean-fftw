@@ -18,6 +18,7 @@
 #include "libbench2/bench-user.h"
 #include <lean/lean.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "lf_lean.h"
 
@@ -214,6 +215,35 @@ void main_init(int *argc, char ***argv)
      lf_lean_init();
 }
 
+/* ---- assembly engine (LeanFFTW/Asm): the plan is a Lean FloatArray of records ---- */
+
+extern lean_object *lfa_plan_measure(size_t N, uint8_t fwd, size_t in, size_t out);
+extern void lfa_call(const void *record, const double *in, double *out);
+extern lean_object *lfa_set_threads(size_t n);
+extern void lean_init_task_manager(void);
+
+static lean_object *aplan = 0;
+static int nthreads = 1;        /* -onthreads=N, as FFTW's benchmark program */
+static int threads_set = 0;
+
+static int asm_setup(size_t n, int fwd, double *in, double *out)
+{
+     lean_object *res, *mem;
+     if (getenv("LF_NO_ASM")) return 0;
+     if (nthreads > 1 && !threads_set) {
+          /* the workers are Lean tasks */
+          lean_init_task_manager();
+          lean_dec(lfa_set_threads((size_t) nthreads));
+          threads_set = 1;
+     }
+     res = lfa_plan_measure(n, (uint8_t) fwd, (size_t) in, (size_t) out);
+     if (!lean_io_result_is_ok(res)) { lean_dec(res); return 0; }
+     mem = lean_io_result_take_value(res);
+     if (lean_sarray_size(mem) == 0) { lean_dec(mem); return 0; }
+     aplan = mem;
+     return 1;
+}
+
 /* ---- fast engine ---- */
 
 static lf_plan *fplan = 0;
@@ -240,6 +270,10 @@ void setup(bench_problem *p)
 {
      if (fast_ok(p)) {
           /* plan on the problem's own arrays, as FFTW does; libbench2 zeroes them after setup */
+          if (asm_setup((size_t) p->sz->dims[0].n, p->sign < 0, (double *) p->in, (double *) p->out)) {
+               fin = (double *) p->in; fout = (double *) p->out;
+               return;
+          }
           fplan = lf_plan_measure_arrays((size_t) p->sz->dims[0].n, p->sign < 0,
                                          (double *) p->in, (double *) p->out, 0, 0);
           if (fplan) {
@@ -252,6 +286,13 @@ void setup(bench_problem *p)
 
 void doit(int iter, bench_problem *p)
 {
+     if (aplan) {
+          const void *rec = lean_float_array_cptr(aplan);
+          const double *i = fin;
+          double *o = fout;
+          for (int it = 0; it < iter; ++it) lfa_call(rec, i, o);
+          return;
+     }
      if (fplan) {
           lf_plan *pl = fplan;
           const double *i = fin;
@@ -264,6 +305,7 @@ void doit(int iter, bench_problem *p)
 
 void done(bench_problem *p)
 {
+     if (aplan) { lean_dec(aplan); aplan = 0; return; }
      if (fplan) { lf_destroy(fplan); fplan = 0; return; }
      generic_done(p);
 }
@@ -271,4 +313,8 @@ void done(bench_problem *p)
 void initial_cleanup(void) {}
 void final_cleanup(void) {}
 void cleanup(void) {}
-void useropt(const char *arg) { UNUSED(arg); }
+void useropt(const char *arg)
+{
+     int x;
+     if (sscanf(arg, "nthreads=%d", &x) == 1 && x >= 1) nthreads = x;
+}
