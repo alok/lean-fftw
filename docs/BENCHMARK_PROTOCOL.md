@@ -112,3 +112,12 @@ commit, environment variables affecting threading (`MKL_THREADING_LAYER`,
    in all three modes. MKL is not installed on this machine and is not part of the run. The
    planner default changed in i10 (race order with pruning, `LF_PLANNER=exhaustive` restores
    the old search); setup time is reported but not part of the metric, as before.
+6. *2026-11-10, before measuring i11 and i12.* The machine is Emerald Rapids (family 6 model
+   207, 2.1 GHz nominal, 4 vCPUs). No protocol rule changes. The implementation measured is
+   now the assembly engine (the C engine was removed): i11 is commit `79069f3`, i12 is commit
+   `07722b7`. Earlier iteration binaries (C engine) no longer build from the repository and
+   are not part of the run, so i11 and i12 are compared with FFTW and with each other only.
+   FFTW wisdom was generated from scratch on this CPU for each mode on 2026-11-09
+   (`/root/results/wisdom-emr`). MKL is not installed on this machine. The i11 binary is a
+   development build of the same sources (same generated assembly, same Lean code, linked
+   without Lake).
