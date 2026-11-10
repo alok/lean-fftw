@@ -1,17 +1,22 @@
 # Results
 
-> **Historical up to here.** The iterations and runs below used the C engine (`csrc/`,
-> `tools/c/`), which was removed on 2026-11-10 in favour of assembly written by Lean
-> (`LeanFFTW/Asm`). Those files are in the history up to commit `7cc9489`; the current state
-> is in [TRUST.md](TRUST.md) and the README.
+> **Two engines.** The latest run measures the assembly engine: the library is Lean plus
+> AVX-512 assembly that Lean writes (`LeanFFTW/Asm`), with no C. Every run from Granite
+> Rapids down used the C engine (`csrc/`, `tools/c/`), which was removed on 2026-11-10; those
+> files are in the history up to commit `7cc9489`. The current state is in
+> [TRUST.md](TRUST.md) and the README.
 
-Three runs of the predeclared protocol ([BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md))
-are reported. The machine is a cloud VM whose CPU changed when the container was
-re-provisioned (amendments 1, 3 and 4), so each run re-measures every iteration and every
-competitor on one machine, and numbers are only compared within a run.
+Runs of the predeclared protocol ([BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md)) are
+reported below, newest first. The machine is a cloud VM whose CPU changed when the container
+was re-provisioned (amendments 1, 3, 4, 5 and 6), so each run measures its iterations and
+every competitor on one machine, and numbers are only compared within a run.
 
-* **Latest: Granite Rapids, i9 and i10** (2026-11-07, [`results/gnr-i10/`](../results/gnr-i10),
-  section below): G(i10) = 0.814, CI [0.794, 0.829]. i10 is the Lean-driven round
+* **Latest: Emerald Rapids, i11 and i12, the assembly engine** (2026-11-10,
+  [`results/emr-i12/`](../results/emr-i12), section below): **G(i12) = 0.750, CI [0.734,
+  0.772]**; G(i11) = 0.807, CI [0.788, 0.827]. From N = 1024 up, i12 takes 0.90 of FFTW's
+  time (i11: 1.00).
+* Granite Rapids, i9 and i10 (2026-11-07, [`results/gnr-i10/`](../results/gnr-i10)):
+  G(i10) = 0.814, CI [0.794, 0.829]. i10 is the Lean-driven round
   ([LEAN_DRIVEN.md](LEAN_DRIVEN.md)): planner in Lean, in-place address tables from Lean.
 * Sapphire Rapids, i0–i9 (2026-10-31, [`results/spr-i9/`](../results/spr-i9)).
 * Earlier: Sapphire Rapids, i0–i7 (2026-10-17, [`results/spr-i7/`](../results/spr-i7)).
@@ -24,12 +29,105 @@ competitor on one machine, and numbers are only compared within a run.
 A run of i0–i8 on 2026-10-31 ([`results/spr-i8/`](../results/spr-i8)) found the code
 placement regression that i9 fixes (see ITERATIONS.md) and is kept for the record.
 
-![optimization history](../results/optimization.gif)
+**A note on CPU names.** The runs labelled "Sapphire Rapids" and the run labelled "Emerald
+Rapids" report the same processor to `lscpu`: family 6, model 207, stepping 2, 2.1 GHz,
+260 MB of third-level cache (`meta.json` of each run). Model 207 is Emerald Rapids, so the
+"Sapphire Rapids" label of the earlier runs was most likely wrong. The directory names and
+the text of those runs are left as written. They are still different virtual machines on
+different days, and numbers are compared within a run only.
 
-The GIF is the Sapphire Rapids history (i0–i9); the Granite Rapids run below measured only i9
-and i10.
+![optimization history, C engine](../results/optimization.gif)
 
-## Latest run: Granite Rapids, i9 and i10
+The first GIF is the history of the C engine (i0–i9, 2026-10-31). The second is the assembly
+engine in the latest run (i11 and i12).
+
+![assembly engine, latest run](../results/optimization-emr.gif)
+
+## Latest run: Emerald Rapids, i11 and i12 (the assembly engine)
+
+Emerald Rapids (family 6 model 207, 2.1 GHz, 4 vCPUs, KVM), 2026-11-10 (amendment 6). FFTW
+3.3.10 with wisdom generated from scratch on this machine for each planner mode (MEASURE,
+PATIENT, EXHAUSTIVE), then 10 interleaved process runs per (implementation, size), pinned to
+CPU 0: 900 runs, none failed. MKL is not installed on this machine.
+
+* i11 is the first state without C (commit `79069f3`): the engine is assembly written,
+  checked and planned by Lean. i12 (commit `07722b7`) adds the allocator that chooses
+  instruction orders by the micro-operation counts of the proved cost model
+  ([COST_MODEL.md](COST_MODEL.md)) and the in-place schedule for sizes that are not powers
+  of two. The C-engine binaries (i0–i10) no longer build from the repository and are not in
+  this run.
+* **G(i12 / FFTW best mode) = 0.750, 95% CI [0.734, 0.772]**; against each mode: MEASURE
+  0.662, PATIENT 0.706, EXHAUSTIVE 0.726. The predeclared target (upper bound ≤ 0.90) is met
+  by a library with no C in it.
+* G(i11 / FFTW best mode) = 0.807, CI [0.788, 0.827].
+* **i12 / i11 = 0.929, CI [0.910, 0.957].** The quick measurement behind
+  COST_MODEL.md had given 0.927 for the allocator change.
+* By size band (geometric mean of i12 / FFTW best): 0.43 for N ≤ 16, 0.84 for N = 32 … 512,
+  **0.90 for N ≥ 1024** (i11: 1.00). In the C-engine runs the large sizes were at parity or
+  behind FFTW (0.93 to 1.11 in the runs on this CPU model).
+* **Where FFTW is still ahead:** N = 128 (1.03), N = 2^17 (1.17) and N = 2^18 (1.08).
+
+| N | FFTW best | mode | i11 | i12 | i11 / FFTW | i12 / FFTW |
+|---:|---:|---|---:|---:|---:|---:|
+| 2 | 3.65 ns | measure | 1.01 ns | 0.99 ns | 0.28 | 0.27 |
+| 4 | 4.05 ns | measure | 1.59 ns | 1.61 ns | 0.39 | 0.40 |
+| 8 | 5.64 ns | patient | 3.30 ns | 3.01 ns | 0.59 | 0.53 |
+| 16 | 12.23 ns | patient | 7.41 ns | 7.25 ns | 0.61 | 0.59 |
+| 32 | 27.57 ns | exhaustive | 17.42 ns | 17.17 ns | 0.63 | 0.62 |
+| 64 | 51.95 ns | patient | 40.68 ns | 40.40 ns | 0.78 | 0.78 |
+| 128 | 93.41 ns | measure | 97.92 ns | 96.16 ns | 1.05 | 1.03 |
+| 256 | 226.30 ns | exhaustive | 221.33 ns | 217.13 ns | 0.98 | 0.96 |
+| 512 | 496.27 ns | patient | 512.84 ns | 420.90 ns | 1.03 | 0.85 |
+| 1024 | 1.10 µs | exhaustive | 1.20 µs | 1.07 µs | 1.09 | 0.98 |
+| 2048 | 2.73 µs | exhaustive | 2.81 µs | 2.40 µs | 1.03 | 0.88 |
+| 4096 | 7.83 µs | exhaustive | 7.78 µs | 6.20 µs | 0.99 | 0.79 |
+| 8192 | 15.19 µs | exhaustive | 15.11 µs | 12.92 µs | 0.99 | 0.85 |
+| 16384 | 36.89 µs | exhaustive | 36.62 µs | 29.49 µs | 0.99 | 0.80 |
+| 32768 | 89.06 µs | exhaustive | 74.40 µs | 70.27 µs | 0.84 | 0.79 |
+| 65536 | 237.21 µs | exhaustive | 228.10 µs | 208.33 µs | 0.96 | 0.88 |
+| 131072 | 552.17 µs | exhaustive | 604.29 µs | 647.66 µs | 1.09 | 1.17 |
+| 262144 | 1.255 ms | exhaustive | 1.365 ms | 1.355 ms | 1.09 | 1.08 |
+
+Times are medians of the 10 runs.
+
+**The two largest sizes.** At 2^17 the ten i12 runs range from 540 to 757 µs and FFTW's from
+504 to 615 µs; at 2^18, 1.03 to 1.68 ms against 1.14 to 1.37 ms. Each Lean FFTW process plans
+again by measurement, and at these sizes (4 to 8 MB of data, beyond the 2 MB second-level
+cache) the leading plans differ by less than the machine's noise, so each process picks a
+different one. Eight more processes at 2^17, each followed by FFTW, gave ratios from 0.94 to
+1.23 with median 1.00 ([`n131072-reruns.txt`](../results/emr-i12/n131072-reruns.txt), not a
+protocol measurement). So the best plans are as fast as FFTW's, the planner does not find
+them reliably, and the protocol's medians (1.17 and 1.08) are what a user gets today. FFTW
+does not have this problem in the protocol because its plan comes from wisdom. Lean FFTW has
+no wisdom yet.
+
+**Planning time** (not part of the metric): median 1.5 s at 2^16, 3.8 s at 2^17, 8.8 s at
+2^18. FFTW with wisdom plans in milliseconds.
+
+**Correctness and accuracy of the benchmarked build.**
+
+* libbench2 `--verify` passes at all 18 sizes for both binaries
+  ([`verify.txt`](../results/emr-i12/verify.txt)).
+* Accuracy (libbench2 `--accuracy`, 10 rounds): the forward L2 error of i12 is between 0.85×
+  and 1.05× FFTW PATIENT's at every size (protocol limit: 2×).
+* FFTW's exhaustive bigcheck on the i12 library: 50,702 of 50,702 problems pass and 30 of 30
+  unsupported problems are rejected ([`results/bigcheck-i12/`](../results/bigcheck-i12)).
+  This is the first full run on the assembly engine.
+* `asm_test` compares the engine bit for bit with `refTransform`: 596 plans of the small
+  transforms, 6,956 runs of Stockham and blocked plans, 1,380 plans at 345 sizes whose prime
+  factors are at most 13, and 17,024 plans of the powers of two up to 2^11; no mismatch.
+
+**Not protocol runs** (same machine, [`results/emr-quick/`](../results/emr-quick), minimum
+of 3 to 5 interleaved rounds, FFTW in patient mode):
+
+* Ten sizes that are not powers of two, 360 to 50000: 0.73–1.04 of FFTW's time, geometric
+  mean 0.89 (before the in-place schedule covered them: 1.07).
+* Threads (4 virtual CPUs, FFTW built with `--enable-threads`, wisdom per thread count,
+  N = 4096 to 2^18): 0.52–0.72 of FFTW's time at 2 threads, 0.28–0.77 at 4. The engine's own
+  gain from 1 to 4 threads is 2.6–2.9× at 2^16 and 2^18 and under 1.2× at 16384 and below.
+* No GPU is available on these machines; nothing was built or measured for one.
+
+## Run of 2026-11-07: Granite Rapids, i9 and i10
 
 Granite Rapids (family 6 model 173, 2.3 GHz, 4 vCPUs, KVM). FFTW 3.3.10 with wisdom generated
 from scratch on this CPU for each planner mode (MEASURE, PATIENT, EXHAUSTIVE), then 10

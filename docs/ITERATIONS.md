@@ -351,3 +351,49 @@ Tests: `test_fast 14 18` (unlimited stack): 3,726 plans, 0 mismatches; `test_fas
 1000 3000 4725 7203 10368`: 6,496 plans, 0 mismatches; libbench2 `--verify` at all primary
 sizes; bigcheck 50,702 of 50,702 pass and 30 of 30 rejected; accuracy within 1.05× of FFTW.
 Axiom audit: 40 theorems, standard axioms only.
+
+## i11: no C; assembly written, checked and planned by Lean (commits 9619233–79069f3)
+
+The engine was rewritten as x86-64 AVX-512 assembly that Lean produces (`LeanFFTW/Asm`), and
+the C engine (600 hand-written lines around 193,000 generated ones, compiled by gcc) was
+removed once the assembly engine was at least as fast at every size measured.
+
+* **Instruction DSL, vector IR, register allocator** in Lean; output is GNU assembler text
+  and `as` is the only external tool.
+* **Translation validation with a proved checker.** Every block is checked against a
+  specification instantiated from the proved kernels; `check_sound` says an accepted block
+  computes its specification on every machine state. 1,398 of 1,454 blocks are checked
+  (1,442 of 1,498 at i12; the 56 masked blocks have no specification yet). The checker caught an allocator bug (a spill
+  slot released one instruction early) that no test had hit.
+* **Schedules:** direct kernels for N ≤ 63, fused and two-pass kernels up to 256, the
+  in-place schedule for powers of two, Stockham and blocked Stockham passes for mixed
+  radices, prefetch of the first pass's outputs and page-sized column chunks for large
+  sizes, a thread pool.
+* Plans, twiddle tables, address tables and the planner are Lean. The only C left in the
+  repository is the libbench2 adapter.
+
+## i12: allocator guided by a proved cost model; in-place for all sizes (commits 448cc39, 07722b7)
+
+* **Cost model** ([COST_MODEL.md](COST_MODEL.md)): a block is a CSLib `FreeM` program with
+  three handlers (machine, checker, micro-operation weight). `block_cycles_ge` proves a lower
+  bound on the cycles of every schedule of the block's micro-operations on the ports of the
+  processor model. Measured passes run 1.05 to 1.18 times above the bound.
+* **Allocator search by micro-operations:** eight instruction orders (four, each with and
+  without the eager order that computes both halves of a butterfly together) and two fold
+  limits, the fewest micro-operations wins, every candidate through the proved checker.
+  Spill stores per body: radix-16 middle pass 57 → 1, radix-32 last pass 211 → 71.
+* **In-place schedule for sizes that are not powers of two** (`leafGFn`, dit kernels for
+  radices 3 to 15): ten sizes from 360 to 50000 went from 1.07 to 0.89 of FFTW's time on
+  geometric mean.
+* Tried and not used: constants kept in free registers (no change in time), a total
+  throughput term fitted to the measurements (failed its one prediction), narrow lane stores
+  in the first pass (faster only while the output fits the first-level cache).
+
+Results (Emerald Rapids run, [RESULTS.md](RESULTS.md)): G(i11) = 0.807 [0.788, 0.827];
+**G(i12) = 0.750 [0.734, 0.772]**; i12 / i11 = 0.929 [0.910, 0.957]; N ≥ 1024: 1.00 → 0.90.
+Still behind FFTW at N = 128 (1.03), 2^17 (1.17) and 2^18 (1.08).
+
+Tests: `asm_test` bit for bit against `refTransform` (small 596 plans, `stk` 6,956 runs,
+`mixed` 1,380 plans at 345 sizes, 17,024 plans of the powers of two up to 2^11), no mismatch; libbench2 `--verify` at all
+primary sizes; bigcheck 50,702 of 50,702 pass and 30 of 30 rejected; accuracy within 1.05× of
+FFTW. Axiom audit: standard axioms only, no `sorry`.

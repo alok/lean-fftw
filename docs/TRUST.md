@@ -15,7 +15,7 @@ This is the path every benchmark size takes, primary and secondary.
 | 4 | `refTransform` (Lean `Float`) | the exact DFT, within an explicit bound | **proved** (`refTransform_error`, `refTransform_error_depth`), under the stated hypotheses (finite values, constant accuracy κ, twiddle accuracy τ) |
 | 5 | Lean `Float` semantics | IEEE binary64 round-to-nearest-even | **proved** on the Lean side: Lean 4.35 defines `Float` operations through `Float.Model`, and `floatArith_stdModel` reads them through FloatLib's binary64 model |
 | 6 | compiled `Float` code | Lean's `Float` definitions | **trusted**: Lean compiles `Float` operations to C `double` via `@[extern]`; this relies on the C compiler and the CPU implementing IEEE binary64 |
-| 7 | each block of vector code in the assembly engine (`LeanFFTW/Asm`) | its specification: the kernel of links 2–4, instantiated lane by lane | **checked by a checker proved sound** (`check_sound`), for 1,398 of 1,454 blocks; the other 56 (masked blocks) are tested only |
+| 7 | each block of vector code in the assembly engine (`LeanFFTW/Asm`) | its specification: the kernel of links 2–4, instantiated lane by lane | **checked by a checker proved sound** (`check_sound`), for 1,442 of 1,498 blocks; the other 56 (masked blocks) are tested only |
 | 8 | the assembly engine as a whole | `refTransform` with the same radices | **tested bit for bit** (below) |
 
 The library contains no C. The engine is AVX-512 assembly written by Lean, and Lean also

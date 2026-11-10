@@ -4,12 +4,21 @@ A double-precision FFT library written in Lean 4, with kernel-checked proofs tha
 computes is the discrete Fourier transform. FFTW 3.3.10 is the benchmark competitor and the
 source of the test harness; Lean FFTW never links or calls it.
 
-![Lean FFTW optimization history against FFTW and MKL](results/optimization.gif)
+![Lean FFTW, the assembly engine, against FFTW](results/optimization-emr.gif)
 
 ## Results
 
-* **Speed.** On the predeclared benchFFT workload (1-D complex, out of place, N = 2…2^18,
-  one core), Lean FFTW takes **0.75–0.83×** the time of FFTW's best planner mode per size,
+* **Speed, current engine (no C).** On the predeclared benchFFT workload (1-D complex, out of
+  place, N = 2…2^18, one core), the assembly engine takes **0.750×** the time of FFTW's best
+  planner mode per size, as a geometric mean over the 18 sizes (95% CI [0.734, 0.772],
+  Emerald Rapids, 2026-11-10; target ≤ 0.90). Small sizes give the largest margin (0.43 for
+  N ≤ 16), and the large ones are ahead too: **0.90 for N ≥ 1024** (the C engine: 0.93 to
+  1.11, depending on the run). FFTW is still ahead at N = 128 (1.03), 2^17 (1.17) and 2^18
+  (1.08). At 2^17 and 2^18 the planner's best plans match FFTW's, but it does not find them
+  reliably. Planning is slow
+  (8.8 s at 2^18) and there is no wisdom. Details: [docs/RESULTS.md](docs/RESULTS.md).
+* **Speed, earlier runs (C engine).** On the same workload (1-D complex, out of place, N = 2…2^18,
+  one core), Lean FFTW took **0.75–0.83×** the time of FFTW's best planner mode per size,
   as a geometric mean over the 18 sizes. The repo's run gave 0.750 (95% CI [0.744, 0.765],
   Sapphire Rapids, 2026-10-31). An independent rerun on a fresh VM of the same CPU model, with
   FFTW rebuilt and its wisdom regenerated, gave **0.828 (CI [0.815, 0.853])**
@@ -29,15 +38,17 @@ source of the test harness; Lean FFTW never links or calls it.
   gives **0.814 (CI [0.794, 0.829])**, again all from small sizes; there FFTW is ahead from
   N = 512 up, by 1.3× at the two largest sizes.
 * **Accuracy.** libbench2's multiple-precision check gives an L2 error within 1.08× of
-  FFTW's at every primary size and 1.11× at the secondary sizes (rerun: within 1.04×).
+  FFTW's at every primary size and 1.11× at the secondary sizes (rerun: within 1.04×;
+  assembly engine: within 1.05×).
 * **Tests.** FFTW's own harness (libbench2 `--verify` driven by `tests/check.pl`) passes
   over FFTW's double-precision guru surface: complex, r2c/c2r and all 11 r2r kinds, any
   rank, vector rank and strides, in and out of place, split or interleaved. That covers
   all 50,702 problems of FFTW's exhaustive bigcheck enumeration (`check.pl -a`). See
   [docs/FFTW_INVENTORY.md](docs/FFTW_INVENTORY.md) for everything FFTW has and what is not
   covered (other precisions, threads, MPI, wisdom, the `fftw3.h` C API). The full enumeration
-  was last run with the C engine; it has not yet been rerun on the assembly engine, which
-  passes `--verify` on the 29 problems tried.
+  was rerun on the assembly engine on 2026-11-10: 50,702 of 50,702 problems pass and the 30
+  problems the harness expects to be rejected are rejected
+  ([results/bigcheck-i12](results/bigcheck-i12)).
 * **Proofs.** No `sorry`, no new axioms ([scripts/Axioms.lean](scripts/Axioms.lean)):
   * the spec agrees with Mathlib's `ZMod.dft`;
   * the generated butterfly kernels and the Stockham schedule compute the DFT exactly;
@@ -81,7 +92,8 @@ specification on every machine state, in exact arithmetic and in binary64. The g
 refuses to write a block that fails. This has already paid for itself: the checker caught a
 register-allocator bug (a spill slot released one instruction early) that no test had hit.
 
-The code is about 12,700 lines of hand-written Lean. The only C left in the repository is
+The code is about 15,200 lines of hand-written Lean (5,400 in the assembly engine, 4,800 of
+proofs). The only C left in the repository is
 the 626-line adapter that plugs the library into FFTW's benchmark and test program
 (`bench/backends`). For comparison, FFTW's generator is OCaml and its runtime is C, at
 roughly 1 line of OCaml to 5 of hand-written C.
@@ -90,19 +102,31 @@ roughly 1 line of OCaml to 5 of hand-written C.
 `FloatArray`, proved to compute `refTransform`; it is 1.6–2.9× slower than SIMD code from
 N = 1024 up ([docs/LEAN_DRIVEN.md](docs/LEAN_DRIVEN.md)).
 
-**Speed of the assembly engine.** The protocol figures under Results were measured with the
-C engine. Quick measurements of the assembly engine on Emerald Rapids (one core, FFTW in
-patient mode, not yet the full protocol): at commit `79069f3`, geometric mean about 0.78×
-FFTW's time over the powers of two, with FFTW still 3–7% ahead at N = 256, 512 and 2^17, and
-0.49–0.91× for the composite sizes from 18 to 240. Since then the powers of two from 16 to
-2^18 became 7% faster on geometric mean ([docs/COST_MODEL.md](docs/COST_MODEL.md)), and the
-in-place schedule now covers sizes that are not powers of two: ten such sizes from 360 to
-50000 run at 0.73–1.04× FFTW's time, geometric mean 0.89 (before: 0.71–1.50×, geometric mean
-1.07; N = 50000 went from 1.50× to 1.04×). With threads (4 virtual CPUs, FFTW patient built
-with `--enable-threads`, N = 4096 to 2^18): 0.52–0.72× FFTW's time at 2 threads and
-0.28–0.77× at 4; the engine itself gains 2.6–2.9× from 1 to 4 threads at 2^16 and 2^18 and
-under 1.2× at 16384 and below. The numbers are in `results/emr-quick`. A protocol run with
-confidence intervals is still to come.
+**Speed of the assembly engine.** Protocol run of 2026-11-10 on Emerald Rapids
+([docs/RESULTS.md](docs/RESULTS.md), `results/emr-i12`), one core, against FFTW's best of
+three planner modes with wisdom:
+
+| | Geometric mean of time / FFTW's time | 95% CI |
+|---|---:|---|
+| i11: first state without C (commit `79069f3`) | 0.807 | [0.788, 0.827] |
+| i12: allocator guided by the proved cost model (commit `07722b7`) | **0.750** | [0.734, 0.772] |
+| i12 against i11 | 0.929 | [0.910, 0.957] |
+
+The 7% between the two is the cost model at work ([docs/COST_MODEL.md](docs/COST_MODEL.md)):
+the allocator picks, among instruction orders that all pass the proved checker, the one with
+the fewest micro-operations. It moved the sizes from 1024 up from parity with FFTW (1.00) to
+0.90.
+
+Quick measurements on the same machine, not protocol runs (`results/emr-quick`, FFTW in
+patient mode): ten sizes that are not powers of two, 360 to 50000, run at 0.73–1.04× FFTW's
+time, geometric mean 0.89. With threads (4 virtual CPUs, FFTW built with `--enable-threads`,
+N = 4096 to 2^18): 0.52–0.72× FFTW's time at 2 threads and 0.28–0.77× at 4; the engine itself
+gains 2.6–2.9× from 1 to 4 threads at 2^16 and 2^18 and under 1.2× at 16384 and below. No GPU
+was available, so nothing was built or measured for one.
+
+The history of the C engine (i0–i9, 2026-10-31):
+
+![C engine optimization history against FFTW and MKL](results/optimization.gif)
 
 ## How the pieces fit
 

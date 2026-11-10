@@ -1,0 +1,13 @@
+Not a protocol run. 2026-11-10, after the protocol run, same machine, cpu 0: eight fresh
+processes of lean-i12 at N = 131072 (LF_PLAN_SHOW=1 prints the plan chosen and the planner's
+own time for it), each followed by FFTW exhaustive with wisdom. Lean / FFTW per pair:
+1.23 0.99 1.01 1.07 0.94 0.99 1.07 0.99 (median 1.00).
+
+lfa plan N=131072 inplace [32, 32, 16, 8] T=2 Q=256 pf=2 598287 ns     time: 718.88 us   FFTW 585.06 us
+lfa plan N=131072 inplace [8, 32, 8, 8, 8] T=3 Q=512 pf=2 519143 ns    time: 509.16 us   FFTW 515.31 us
+lfa plan N=131072 inplace [32, 32, 8, 4, 4] T=2 Q=256 pf=2 511133 ns   time: 546.16 us   FFTW 542.31 us
+lfa plan N=131072 inplace [16, 16, 8, 8, 8] T=3 Q=512 pf=2 482280 ns   time: 504.50 us   FFTW 469.31 us
+lfa plan N=131072 inplace [32, 32, 16, 8] T=2 Q=128 pf=0 655191 ns     time: 732.81 us   FFTW 778.56 us
+lfa plan N=131072 inplace [8, 32, 8, 8, 8] T=3 Q=256 pf=2 499220 ns    time: 548.94 us   FFTW 552.66 us
+lfa plan N=131072 inplace [16, 16, 8, 8, 8] T=3 Q=128 pf=2 581527 ns   time: 625.97 us   FFTW 586.78 us
+lfa plan N=131072 inplace [8, 16, 8, 8, 4, 4] T=3 Q=128 pf=2 487436 ns time: 586.78 us   FFTW 592.22 us
