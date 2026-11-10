@@ -29,6 +29,8 @@ structure Cand where
   Q : Nat := 0
   /-- the loops over groups of blocks and over chunks of columns run on the thread pool -/
   par : Bool := false
+  /-- prefetch variant of the first pass (`leafPrefetch`) -/
+  pf : Nat := 0
   /-- measured seconds per transform -/
   t : Float := 1e30
   deriving Inhabited
@@ -112,7 +114,7 @@ def timePlan (p : Plan) (inp out : USize) (k : Nat) (tmin : Float) (cutoff : Flo
 
 /-- Build the plan of a candidate. -/
 def build (N : Nat) (fwd inplace : Bool) (base : FloatArray) (c : Cand) : IO (Option Plan) := do
-  let some src := mkPlan N fwd c.rs c.mode c.T c.Q inplace base c.par | return none
+  let some src := mkPlan N fwd c.rs c.mode c.T c.Q inplace base c.par c.pf | return none
   return some (← src.build inplace)
 
 /-- Build and time. -/
@@ -229,11 +231,17 @@ def planMeasure (N : Nat) (fwd : Bool) (inp out : USize) (effort : Effort) :
       if c.mode != .inplace then continue
       let s := c.rs.size
       for T in [(if s ≥ 4 then s - 3 else 1):s] do
-        for Q in [0, 32, 128] do
+        -- chunks of whole pages (256 columns) stay within a fraction of the cache sets
+        for Q in [0, 32, 128, 256, 512] do
           blocked := blocked.push { c with T, Q }
     let bs ← measureAll N fwd inplace base inp out effort blocked (cs[0]?.map (·.t) |>.getD 1e30)
     logCands N fwd "blocked" bs
     cs := (cs ++ bs.filter (·.t < 1e30)).qsort byTime
+    -- 2a: the leaders again, prefetching the outputs of the first pass
+    let pcs := (cs.filter (·.mode == .inplace)).extract 0 8 |>.map ({ · with pf := 2 })
+    let ps ← measureAll N fwd inplace base inp out effort pcs (cs[0]?.map (·.t) |>.getD 1e30)
+    logCands N fwd "prefetch" ps
+    cs := (cs ++ ps.filter (·.t < 1e30)).qsort byTime
   -- 2b: with a thread pool, the same plans with their loops shared among the threads
   let threads ← Pool.threads
   if threads > 1 && N ≥ 2 ^ 9 then
@@ -280,7 +288,7 @@ def planMeasureFFI (N : USize) (fwd : UInt8) (inp out : USize) : IO FloatArray :
   match ← planMeasure n (fwd != 0) inp out (← effortFromEnv) with
   | some (p, c) =>
       if (← IO.getEnv "LF_PLAN_SHOW").isSome then
-        IO.eprintln s!"lfa plan N={n} {modeTag c.mode} {c.rs.toList} T={c.T} Q={c.Q}{if c.par then " threads" else ""} {c.t * 1e9} ns"
+        IO.eprintln s!"lfa plan N={n} {modeTag c.mode} {c.rs.toList} T={c.T} Q={c.Q} pf={c.pf}{if c.par then " threads" else ""} {c.t * 1e9} ns"
       return p.mem
   | none => return FloatArray.empty
 

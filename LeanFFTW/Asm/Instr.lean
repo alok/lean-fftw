@@ -244,6 +244,8 @@ inductive Instr where
   | lockInc32 (m : Mem)
   /-- spin-wait hint -/
   | pause
+  /-- prefetch the cache line of `m`: `lvl` 0, 1, 2 for `prefetcht0/1/2`, 3 for `prefetchw` -/
+  | prefetch (lvl : Nat) (m : Mem)
   /-- copy `rcx` bytes from `[rsi]` to `[rdi]` -/
   | repMovsb
   /-- store `rax` in the `rcx` words at `[rdi]` -/
@@ -263,8 +265,6 @@ inductive Instr where
   | ret
   | push (r : Gpr)
   | pop (r : Gpr)
-  /-- `prefetcht0` -/
-  | prefetch (m : Mem)
   -- assembler directives
   | label (name : String)
   | align (n : Nat)
@@ -320,6 +320,8 @@ def print : Instr → String
   | lockDec m => s!"\tlock dec {m.qword}"
   | lockInc32 m => s!"\tlock inc {m.dword}"
   | pause => "\tpause"
+  | prefetch lvl m =>
+      s!"\tprefetch{match lvl with | 0 => "t0" | 1 => "t1" | 2 => "t2" | _ => "w"} byte ptr {m.addr}"
   | repMovsb => "\trep movsb"
   | repStosq => "\trep stosq"
   | syscall => "\tsyscall"
@@ -336,7 +338,6 @@ def print : Instr → String
   | ret => "\tret"
   | push r => s!"\tpush {r.name}"
   | pop r => s!"\tpop {r.name}"
-  | prefetch m => s!"\tprefetcht0 byte ptr {m.addr}"
   | label n => s!"{n}:"
   | align n => s!"\t.p2align {Nat.log2 n}"
   | directive t => s!"\t{t}"

@@ -38,8 +38,8 @@ where
     return out
 
 def checkOne (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : Bool)
-    (base inp ref : FloatArray) (ran : IO.Ref Nat) : IO Bool := do
-  let some src := inplacePlan N fwd rs T Q inplace base | return true
+    (base inp ref : FloatArray) (ran : IO.Ref Nat) (pf : Nat := 0) : IO Bool := do
+  let some src := inplacePlan N fwd rs T Q inplace base false pf | return true
   ran.modify (· + 1)
   let plan ← src.build inplace
   let out := if inplace then randArr (2 * N) 1 else zeros (2 * N)
@@ -48,7 +48,7 @@ def checkOne (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : Bool
   match firstDiff out ref with
   | none => return true
   | some i =>
-      IO.println s!"MISMATCH N={N} fwd={fwd} rs={rs} T={T} Q={Q} inplace={inplace} at {i}: {out[i]!} vs {ref[i]!}"
+      IO.println s!"MISMATCH N={N} fwd={fwd} rs={rs} T={T} Q={Q} pf={pf} inplace={inplace} at {i}: {out[i]!} vs {ref[i]!}"
       return false
 
 /-- `time N T Q R₀ R₁ …`: time one in-place plan (best of 8). -/
@@ -59,13 +59,16 @@ def timeMain (args : List String) : IO UInt32 := do
   let Q := nums[2]!
   let rs := (nums.drop 3).toArray
   let base := baseTable N true
-  let some src := inplacePlan N true rs T Q false base | IO.println "unsupported"; return 1
+  let pf := ((← IO.getEnv "LF_PF").getD "0").toNat!
+  let some src := inplacePlan N true rs T Q false base false pf | IO.println "unsupported"; return 1
   let plan ← src.build false
-  let inp := zeros (2 * N + 8)
+  -- `LF_OFS`: byte offset of `out` relative to `in` modulo 4096 (a multiple of 64)
+  let shift := ((← IO.getEnv "LF_OFS").getD "0").toNat!
+  let inp := zeros (2 * N + 1024)
   -- a different size: equal pure calls are shared, and the arrays must be distinct
-  let out := zeros (2 * N + 16)
-  let ia := (addr inp + 63) / 64 * 64
-  let oa := (addr out + 63) / 64 * 64
+  let out := zeros (2 * N + 2048)
+  let ia := (addr inp + 4095) / 4096 * 4096
+  let oa := (addr out + 4095) / 4096 * 4096 + shift.toUSize
   let mut reps : Nat := 1
   repeat
     let t0 ← IO.monoNanosNow
@@ -81,6 +84,72 @@ def timeMain (args : List String) : IO UInt32 := do
     let d := (t1 - t0).toFloat / reps.toFloat
     if d < best then best := d
   IO.println s!"N={N} T={T} Q={Q} R={rs}  time {best} ns  (inp {inp.size} out {out.size})"
+  return 0
+
+/-- `race N spec …`, `spec` = `T,Q,pf,R₀,R₁,…`: time the in-place-schedule plans in turn on
+the same arrays, several rounds; prints the minimum and the median of each. -/
+def raceMain (args : List String) : IO UInt32 := do
+  let N := args.head!.toNat!
+  let base := baseTable N true
+  let shift := ((← IO.getEnv "LF_OFS").getD "0").toNat!
+  let rounds := ((← IO.getEnv "LF_ROUNDS").getD "7").toNat!
+  let inp := zeros (2 * N + 1024)
+  let out := zeros (2 * N + 2048)
+  let ia := (addr inp + 4095) / 4096 * 4096
+  let oa := (addr out + 4095) / 4096 * 4096 + shift.toUSize
+  let mut plans : Array (String × Plan) := #[]
+  for spec in args.tail do
+    let nums := (spec.splitOn ",").map String.toNat!
+    let some src := inplacePlan N true (nums.drop 3).toArray nums[0]! nums[1]! false base false nums[2]!
+      | IO.println s!"unsupported {spec}"; return 1
+    plans := plans.push (spec, ← src.build false)
+  let mut reps : Nat := 1
+  repeat
+    let t0 ← IO.monoNanosNow
+    plans[0]!.2.run ia oa reps.toUSize
+    let t1 ← IO.monoNanosNow
+    if t1 - t0 > 5000000 then break
+    reps := reps * 2
+  let mut ts : Array (Array Float) := plans.map fun _ => #[]
+  for _ in [0:rounds] do
+    for i in [0:plans.size] do
+      let mut best : Float := 1e30
+      for _ in [0:3] do
+        let t0 ← IO.monoNanosNow
+        plans[i]!.2.run ia oa reps.toUSize
+        let t1 ← IO.monoNanosNow
+        let d := (t1 - t0).toFloat / reps.toFloat
+        if d < best then best := d
+      ts := ts.modify i (·.push best)
+  for i in [0:plans.size] do
+    let v := ts[i]!.qsort (· < ·)
+    IO.println s!"{plans[i]!.1}: min {(v[0]! / 1000).round} median {(v[v.size / 2]! / 1000).round} us"
+  if inp.size + out.size == 0 then return 1
+  return 0
+
+/-- `tsmall mode R₀ [R₁]` (`mode` = `csmall`, `cfused`, `ctwo`): time a whole-transform kernel
+with `out` at `LF_OFS` bytes past a page boundary (`in` is on one). -/
+def tsmallMain (args : List String) : IO UInt32 := do
+  let mode := match args.head! with | "csmall" => Mode.csmall | "cfused" => .cfused | _ => .ctwo
+  let rs := (args.tail.map String.toNat!).toArray
+  let N := rs.foldl (· * ·) 1
+  let shift := ((← IO.getEnv "LF_OFS").getD "0").toNat!
+  let some src := smallPlan N true rs mode false | IO.println "unsupported"; return 1
+  let plan ← src.build false
+  let inp := zeros (2 * N + 1024)
+  let out := zeros (2 * N + 2048)
+  let ia := (addr inp + 4095) / 4096 * 4096
+  let oa := (addr out + 4095) / 4096 * 4096 + shift.toUSize
+  let reps : Nat := 200000
+  let mut best : Float := 1e30
+  for _ in [0:15] do
+    let t0 ← IO.monoNanosNow
+    plan.run ia oa reps.toUSize
+    let t1 ← IO.monoNanosNow
+    let d := (t1 - t0).toFloat / reps.toFloat
+    if d < best then best := d
+  IO.println s!"{args} out+{shift}: {best} ns = {best * 3.2} cycles at 3.2 GHz"
+  if inp.size + out.size == 0 then return 1
   return 0
 
 def timeNode (src : PlanSrc) (ia oa : USize) : IO Float := do
@@ -107,18 +176,23 @@ def profMain (args : List String) : IO UInt32 := do
   let N := nums[0]!
   let rs := (nums.drop 1).toArray
   let base := baseTable N true
-  let some src := inplacePlan N true rs 0 0 false base | IO.println "unsupported"; return 1
+  let T := ((← IO.getEnv "LF_T").getD "0").toNat!
+  let Q := ((← IO.getEnv "LF_Q").getD "0").toNat!
+  let pf := ((← IO.getEnv "LF_PF").getD "0").toNat!
+  let some src := inplacePlan N true rs T Q false base false pf | IO.println "unsupported"; return 1
   let inp := zeros (2 * N + 8)
   -- a different size: equal pure calls are shared, and the arrays must be distinct
   let out := zeros (2 * N + 16)
   let ia := (addr inp + 63) / 64 * 64
   let oa := (addr out + 63) / 64 * 64
-  let .loop _ _ _ _ _ ch := src.root | return 1
+  let ch ← (match src.root with
+    | .loop _ _ _ _ _ ch _ => pure ch
+    | _ => throw (IO.userError "prof: unexpected plan"))
   let mut tot := 0.0
   for i in [0:ch.size] do
     let t ← timeNode { src with root := .seq #[ch[i]!] } ia oa
     tot := tot + t
-    IO.println s!"pass {i} R={rs[i]!}  {t} ns  {t / N.toFloat} ns/elt"
+    IO.println s!"part {i}  {(t / 1000).round} us  {t / N.toFloat} ns/elt"
   IO.println s!"sum {tot} ns; whole plan {← timeNode src ia oa} ns"
   -- the arrays must stay alive while their addresses are in use
   if inp.size + out.size == 0 then return 1
@@ -272,6 +346,8 @@ def main (args : List String) : IO UInt32 := do
   if args.head? == some "mutate" then return ← mutateMain ((args.getD 1 "1").toNat!)
   if args.head? == some "plan" then return ← planMain args.tail
   if args.head? == some "time" then return ← timeMain args.tail
+  if args.head? == some "race" then return ← raceMain args.tail
+  if args.head? == some "tsmall" then return ← tsmallMain args.tail
   if args.head? == some "prof" then return ← profMain args.tail
   if args.head? == some "small" then return ← smallMain
   let maxLog := (args.getD 0 "12").toNat!
@@ -287,7 +363,9 @@ def main (args : List String) : IO UInt32 := do
         let ref := refTransform fwd N rs inp
         for (T, Q) in [(0, 0), (1, 0), (1, 32), (2, 0), (2, 8), (2, 64), (3, 0), (3, 128)] do
           for inplace in [false, true] do
-            n := n + 1
-            if !(← checkOne N fwd rs T Q inplace base inp ref ran) then bad := bad + 1
+            -- also with the prefetching first pass
+            for pf in [0, 2] do
+              n := n + 1
+              if !(← checkOne N fwd rs T Q inplace base inp ref ran pf) then bad := bad + 1
     IO.println s!"N=2^{lg}: {← ran.get} of {n} plans ran so far, {bad} mismatches"
   return if bad == 0 then 0 else 1

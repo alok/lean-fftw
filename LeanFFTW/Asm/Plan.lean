@@ -242,7 +242,7 @@ the first at least 8), with the passes below `T` run per group of blocks and
 the others in chunks of `Q` columns (`T = 0`: pass by pass), as in `docs/ITERATIONS.md`.
 `none` when the schedule does not apply. -/
 def inplacePlan (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : Bool)
-    (base : FloatArray) (par : Bool := false) : Option PlanSrc := do
+    (base : FloatArray) (par : Bool := false) (pf : Nat := 0) : Option PlanSrc := do
   let s := rs.size
   guard (s ≥ 2 && T < s)
   let R0 := rs[0]!
@@ -264,13 +264,13 @@ def inplacePlan (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : B
       #[.imm 0, .blob tw[t]!, .imm (16 * nst[t]!), .imm nb, .imm nq,
         .imm (16 * nst[t]! * rs[t]! - 128 * nq)]
   let leaf (count inStep gtab : Nat) : PNode :=
-    .kern (leafName R0 fwd) #[.imm (16 * (N / R0)), .imm count, .imm inStep, .blob gtab,
+    .kern (leafName R0 fwd pf) #[.imm (16 * (N / R0)), .imm count, .imm inStep, .blob gtab,
       .imm (16 * ofs[4]!), .imm (16 * ofs[1]!), .imm (16 * ofs[2]!), .imm (16 * ofs[3]!)]
   let mut root : PNode := default
   if T == 0 then
     guard (Q == 0 && !par)
     let gtab := blobs.size
-    blobs := blobs.push (.words ((Array.range (N / R0 / 8)).map fun i => UInt64.ofNat (16 * ofs[8 * i]!)))
+    blobs := blobs.push (.words (((Array.range (N / R0 / 8)).map fun i => UInt64.ofNat (16 * ofs[8 * i]!)) ++ Array.replicate leafPad 0))
     root := .seq (#[leaf (N / R0 / 8) 128 gtab] ++
       (Array.range (s - 1)).map fun i => dit (i + 1) (N / nst[i + 2]!) (nst[i + 1]! / 8))
   else
@@ -285,7 +285,7 @@ def inplacePlan (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : B
     let gA := blobs.size
     blobs := blobs.push (.words ((Array.range (D / 8)).map fun g => UInt64.ofNat (16 * ofs[8 * g]!)))
     let gB := blobs.size
-    blobs := blobs.push (.words ((Array.range gn).map fun i => UInt64.ofNat (16 * ofs[i * D]!)))
+    blobs := blobs.push (.words (((Array.range gn).map fun i => UInt64.ofNat (16 * ofs[i * D]!)) ++ Array.replicate leafPad 0))
     let gL := blobs.size
     blobs := blobs.push (.words ((Array.range 8).map fun l => UInt64.ofNat (16 * ofs[l]!)))
     let inner : Array PNode := if T ≥ 2 then
@@ -398,8 +398,10 @@ def stockhamPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (base : FloatArray) : O
 
 /-- The plan of a schedule. -/
 def mkPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (mode : Mode) (T Q : Nat) (inplace : Bool)
-    (base : FloatArray) (par : Bool := false) : Option PlanSrc :=
-  if mode == .inplace then inplacePlan N fwd rs T Q inplace base par
+    (base : FloatArray) (par : Bool := false) (pf : Nat := 0) : Option PlanSrc :=
+  if mode == .inplace then
+    (if leafPrefetch.contains pf then inplacePlan N fwd rs T Q inplace base par pf else none)
+  else if pf != 0 then none
   else if mode == .stockham then (if T == 0 && Q == 0 && !par then stockhamPlan N fwd rs base else none)
   else if T == 0 && Q == 0 && !par then smallPlan N fwd rs mode inplace else none
 

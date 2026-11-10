@@ -199,7 +199,11 @@ The data of the in-place schedule are in blocks of 8 complex numbers: 8 real par
 loop reads them: for each vector of 8 butterflies, `w_1.re, w_1.im, …, w_{R-1}.re,
 w_{R-1}.im` (8 doubles each, lane order σ). -/
 
-def leafName (R : Nat) (fwd : Bool) : String := s!"lfa_leaf_r{R}_{dirTag fwd}"
+/-- Entries after the end of an offset table of `leafFn` that the prefetches may read. -/
+def leafPad : Nat := 4
+
+def leafName (R : Nat) (fwd : Bool) (pf : Nat := 0) : String :=
+  s!"lfa_leaf_r{R}_{dirTag fwd}{if pf == 0 then "" else s!"_p{pf}"}"
 def ditName (R : Nat) (fwd last : Bool) : String :=
   s!"lfa_dit{if last then "last" else ""}_r{R}_{dirTag fwd}"
 
@@ -257,8 +261,13 @@ of every sequence of power-of-two radices.
 
 Parameters: `1`: `S` = bytes between the `R` inputs of a leaf; `2`: number of iterations;
 `3`: bytes `in` advances per iteration; `4`: table of the byte offsets in `out` of the first
-leaf of each iteration; `5`: `Δ`; `6`–`8`: `X_1`, `X_2`, `X_3`. -/
-def leafFn (R : Nat) (fwd : Bool) : KM Unit := do
+leaf of each iteration; `5`: `Δ`; `6`–`8`: `X_1`, `X_2`, `X_3`.
+
+`pf` adds software prefetches (they change no value): bit 0, the 128 bytes after each input
+vector (what the next call reads when the calls advance `in` by 128; into the second-level
+cache); `pf / 2 = d ≥ 1`: the output of the iteration `d` iterations ahead (for writing; the
+table of parameter 4 has `leafPad` more entries). -/
+def leafFn (R : Nat) (fwd : Bool) (pf : Nat := 0) : KM Unit := do
   let k := butterflyK fwd R false
   let sOut ← KM.gslot
   let sStep ← KM.gslot
@@ -286,11 +295,23 @@ def leafFn (R : Nat) (fwd : Bool) : KM Unit := do
     | 2 => Mem.bi b x2 1 disp
     | _ => Mem.bi b x3 1 disp
   KM.repeatDownMem sCnt do
+    if pf / 2 ≥ 1 then
+      KM.ins (.mov ob (.mem (Mem.b gt (8 * (pf / 2)))))
+      KM.ins (.add ob (.mem sOut))
+      KM.ins (.mov ob2 (.reg ob))
+      KM.ins (.add ob2 (.mem sDelta))
+      for l in [0:8] do
+        for line in [0:R / 4] do
+          KM.ins (.prefetch 3 (lane l (64 * line)))
     KM.ins (.mov ob (.mem (Mem.b gt)))
     KM.ins (.add ob (.mem sOut))
     KM.ins (.mov ob2 (.reg ob))
     KM.ins (.add ob2 (.mem sDelta))
     KM.ins (.add gt (.imm 8))
+    if pf % 2 == 1 then
+      for r in [0:R] do
+        KM.ins (.prefetch 1 (rin.mem r 128))
+        KM.ins (.prefetch 1 (rin.mem r 192))
     KM.block .z (spec := some (leafSpec k R (fun r d => rin.mem r d) lane)) do
       let mut inp : Array VId := #[]
       for r in [0:R] do
@@ -928,6 +949,9 @@ def FnDef.raw (name : String) (body : Array Instr) : FnDef :=
 def leafRadices : List Nat := [8, 16, 32]
 def ditRadices : List Nat := [2, 4, 8, 16, 32]
 
+/-- Prefetch variants of the leaf passes (`leafFn`): none, and the next outputs. -/
+def leafPrefetch : List Nat := [0, 2]
+
 /-- Sizes of the one-butterfly transforms. -/
 def csmallSizes : List Nat := [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]
 
@@ -949,7 +973,8 @@ def registry : Array FnDef := Id.run do
   let mut r : Array FnDef := #[.raw "lfa_loop" loopFn, .raw "lfa_copyin" copyinFn,
     .raw "lfa_ploop" ploopFn]
   for fwd in [true, false] do
-    for R in leafRadices do r := r.push (.km (leafName R fwd) (leafFn R fwd))
+    for R in leafRadices do
+      for pf in leafPrefetch do r := r.push (.km (leafName R fwd pf) (leafFn R fwd pf))
     for R in ditRadices do
       r := r.push (.km (ditName R fwd false) (ditFn R fwd false))
       r := r.push (.km (ditName R fwd true) (ditFn R fwd true))
