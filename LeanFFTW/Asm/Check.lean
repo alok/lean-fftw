@@ -385,6 +385,7 @@ def checkWhy (consts : String → Option (Array UInt64)) (sp : Spec) (w : W) (is
   let mut pos := 0
   -- the instruction that last wrote each register, and the state before it
   let mut lastDef : HashMap Nat (Instr × CState) := {}
+  let mut firstJunk : String := ""
   let lanes (c : CState) (n : Nat) : String := toString (repr ((List.range w.lanes).map (c.regLane n)))
   let srcLanes (c : CState) (v : VSrc) : String :=
     match c.rd cx v with
@@ -395,7 +396,17 @@ def checkWhy (consts : String → Option (Array UInt64)) (sp : Spec) (w : W) (is
     | some cs' =>
         match i with
         | .vmov _ d _ | .vbin _ _ d _ _ | .vfma _ _ _ d _ _ | .vshufpd _ d _ _ _
-        | .vshuff64x2 _ d _ _ _ | .vzero d => lastDef := lastDef.insert d.n (i, cs)
+        | .vshuff64x2 _ d _ _ _ | .vzero d =>
+            lastDef := lastDef.insert d.n (i, cs)
+            -- the first instruction whose result is no value of the specification
+            if firstJunk == "" && (List.range w.lanes).any (fun l => cs'.regLane d.n l == .junk) then
+              let ops : String := match i with
+                | .vmov _ _ src => srcLanes cs src
+                | .vbin _ _ _ s1 s2 => s!"{lanes cs s1.n} {srcLanes cs s2}"
+                | .vfma _ _ _ d s2 s3 => s!"{lanes cs d.n} {lanes cs s2.n} {srcLanes cs s3}"
+                | .vshufpd _ _ s1 s2 _ | .vshuff64x2 _ _ s1 s2 _ => s!"{lanes cs s1.n} {srcLanes cs s2}"
+                | _ => ""
+              firstJunk := s!"; first result outside the specification: instruction {pos} {i.print} with operands {ops}"
         | _ => pure ()
         cs := cs'
     | none =>
@@ -415,7 +426,7 @@ def checkWhy (consts : String → Option (Array UInt64)) (sp : Spec) (w : W) (is
                 | none => "nothing"
               s!"; register lanes {lanes cs r.n}, wanted {want}{d}"
           | _ => ""
-        return s!"instruction {pos} rejected: {i.print}{detail}"
+        return s!"instruction {pos} rejected: {i.print}{detail}{firstJunk}"
     pos := pos + 1
   for (m, _) in sp.outs do
     unless cs.done.contains m do return s!"{m.addr} is never stored"

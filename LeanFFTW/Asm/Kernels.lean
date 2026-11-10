@@ -953,7 +953,9 @@ def ditRadices : List Nat := [2, 4, 8, 16, 32]
 def leafPrefetch : List Nat := [0, 2]
 
 /-- Sizes of the one-butterfly transforms. -/
-def csmallSizes : List Nat := [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]
+def csmallSizes : List Nat :=
+  [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22, 24, 25, 26, 27, 28, 30,
+   33, 35, 36, 39, 40, 42, 44, 45, 48, 49, 50, 52, 54, 55, 56, 60, 63]
 
 /-- `(R1, R2, VLc)` of the two-pass transforms in registers. -/
 def cfusedSet : List (Nat × Nat × Nat) :=

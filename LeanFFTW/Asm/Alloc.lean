@@ -47,6 +47,9 @@ structure AState where
   holder : HashMap Nat VId := {}
   slotOf : HashMap VId Nat := {}
   freeSlots : List Nat := []
+  /-- slots of values that died in the statement being translated: the statement may still
+  read them (a memory operand), so they are reused only from the next statement on -/
+  dyingSlots : List Nat := []
   nSlots : Nat := 0
   pool : Pool := {}
   /-- values that can be reread: loads (until the next store) and constants -/
@@ -202,7 +205,7 @@ def release (v : VId) : AM Unit := do
       | some r => { s with regOf := s.regOf.erase v, holder := s.holder.erase r.n }
       | none => s
     let s := match s.slotOf[v]? with
-      | some i => { s with slotOf := s.slotOf.erase v, freeSlots := i :: s.freeSlots }
+      | some i => { s with slotOf := s.slotOf.erase v, dyingSlots := i :: s.dyingSlots }
       | none => s
     { s with remat := s.remat.erase v }
 
@@ -516,6 +519,8 @@ def allocBlock1 (cfg : ACfg) (blk : VBlock) (pool : Pool) : Except String Alloc 
   let run : AM Unit := do
     for pos in [0:blk.stmts.size] do
       AM.stmt pos blk.stmts[pos]!
+      -- the slots of the values that died are free from here on
+      modify fun s => { s with freeSlots := s.dyingSlots ++ s.freeSlots, dyingSlots := [] }
   let ((), s) ← (run.run cfg).run st
   return ⟨s.out, s.nSlots, s.pool, s.touched⟩
 
