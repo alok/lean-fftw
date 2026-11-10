@@ -241,22 +241,27 @@ def ditTwiddles (base : FloatArray) (N R ns : Nat) : FloatArray := Id.run do
           t := t.push base[2 * (r * (8 * v + sigma[p]!) * step) + part]!
   return t
 
-/-- The plan of the in-place schedule for the radices `rs` (`s ≥ 2` passes; powers of two,
-the first at least 8), with the passes below `T` run per group of blocks and
-the others in chunks of `Q` columns (`T = 0`: pass by pass), as in `docs/ITERATIONS.md`.
-`none` when the schedule does not apply. -/
+/-- The plan of the in-place schedule for the radices `rs` (`s ≥ 2` passes, the first 8, 16
+or 32), with the passes below `T` run per group of blocks and the others in chunks of `Q`
+columns (`T = 0`: pass by pass), as in `docs/ITERATIONS.md`. When the places of the leaves
+do not have the form `leafFn` assumes (radices that are not powers of two), the first pass
+is `leafGFn` and the plan is pass by pass. `none` when the schedule does not apply. -/
 def inplacePlan (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : Bool)
     (base : FloatArray) (par : Bool := false) (pf : Nat := 0) : Option PlanSrc := do
   let s := rs.size
   guard (s ≥ 2 && T < s)
   let R0 := rs[0]!
-  guard (leafRadices.contains R0 && rs.all fun R => ditRadices.contains R)
+  guard ((leafRadices.contains R0 || leafGRadices.contains R0) &&
+    (rs.extract 1 s).all fun R => ditRadices.contains R || ditRadicesM.contains R)
   let nst : Array Nat := (Array.range (s + 1)).map fun t => passNs rs t
   guard (nst[s]! == N)
   let ofs := leafOffsets N rs
-  guard (ofs.size ≥ 8)
-  -- leaf `4h + m` of an iteration is written at `h·ofs 4 + ofs m`
-  guard ((List.range 4).all fun m => ofs[4 + m]! == ofs[4]! + ofs[m]!)
+  let nl := N / R0
+  guard (ofs.size ≥ 8 && ofs.size == nl)
+  -- `leafFn`: leaf `4h + m` of iteration `i` is written at `ofs (8i) + h·ofs 4 + ofs m`
+  let affine := leafRadices.contains R0 && nl % 8 == 0 &&
+    (List.range (nl / 8)).all fun i => (List.range 8).all fun l =>
+      ofs[8 * i + l]! == ofs[8 * i]! + (l / 4) * ofs[4]! + ofs[l % 4]!
   let mut blobs : Array Blob := #[]
   -- twiddles
   let mut tw : Array Nat := #[0]
@@ -271,7 +276,23 @@ def inplacePlan (N : Nat) (fwd : Bool) (rs : Array Nat) (T Q : Nat) (inplace : B
     .kern (leafName R0 fwd pf) #[.imm (16 * (N / R0)), .imm count, .imm inStep, .blob gtab,
       .imm (16 * ofs[4]!), .imm (16 * ofs[1]!), .imm (16 * ofs[2]!), .imm (16 * ofs[3]!)]
   let mut root : PNode := default
-  if T == 0 then
+  if !affine then
+    guard (T == 0 && Q == 0 && !par && pf == 0 && leafGRadices.contains R0)
+    let leafG (count gtab inOfs : Nat) : PNode :=
+      .kern (leafGName R0 fwd) #[.imm (16 * nl), .imm count, .blob gtab, .imm inOfs]
+    let places (first count : Nat) : Blob :=
+      .words ((Array.range (8 * count)).map fun j => UInt64.ofNat (16 * ofs[first + j]!))
+    let mut leaves : Array PNode := #[]
+    if nl / 8 > 0 then
+      leaves := leaves.push (leafG (nl / 8) blobs.size 0)
+      blobs := blobs.push (places 0 (nl / 8))
+    if nl % 8 != 0 then
+      -- the last 8 leaves (some of them a second time)
+      leaves := leaves.push (leafG 1 blobs.size (16 * (nl - 8)))
+      blobs := blobs.push (places (nl - 8) 1)
+    root := .seq (leaves ++
+      (Array.range (s - 1)).map fun i => dit (i + 1) (N / nst[i + 2]!) (nst[i + 1]! / 8))
+  else if T == 0 then
     guard (Q == 0 && !par)
     let gtab := blobs.size
     blobs := blobs.push (.words (((Array.range (N / R0 / 8)).map fun i => UInt64.ofNat (16 * ofs[8 * i]!)) ++ Array.replicate leafPad 0))

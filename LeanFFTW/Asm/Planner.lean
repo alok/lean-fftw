@@ -55,7 +55,8 @@ def modesOf (N : Nat) (rs : Array Nat) : List Mode :=
   (if rs == #[N] && csmallSizes.contains N then [.csmall] else []) ++
   (if two cfusedSet then [.cfused] else []) ++
   (if two ctwoSet then [.ctwo] else []) ++
-  (if rs.size ≥ 2 && leafRadices.contains rs[0]! && rs.all ditRadices.contains &&
+  (if rs.size ≥ 2 && (leafRadices.contains rs[0]! || leafGRadices.contains rs[0]!) &&
+      ((rs.extract 1 rs.size).all fun R => ditRadices.contains R || ditRadicesM.contains R) &&
       N / rs[0]! ≥ 8 then [.inplace] else []) ++
   (if !isPow2 N && rs.all stkRadices.contains then [.stockham] else []) ++
   (if !isPow2 N && rs.size ≥ 2 && bstk0Radices.contains rs[0]! && N / rs[0]! ≥ 8 &&

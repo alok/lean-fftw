@@ -210,6 +210,7 @@ def leafName (R : Nat) (fwd : Bool) (pf : Nat := 0) : String :=
   s!"lfa_leaf_r{R}_{dirTag fwd}{if pf == 0 then "" else s!"_p{pf}"}"
 def ditName (R : Nat) (fwd last : Bool) : String :=
   s!"lfa_dit{if last then "last" else ""}_r{R}_{dirTag fwd}"
+def leafGName (R : Nat) (fwd : Bool) : String := s!"lfa_leafg_r{R}_{dirTag fwd}"
 
 /-- What the block of `leafFn` computes: lane `p` runs the kernel on the complex numbers `p`
 of the rows (`lo` holds numbers 0–3 of a row, `hi` 4–7, interleaved; lane `p` is number
@@ -330,6 +331,51 @@ def leafFn (R : Nat) (fwd : Bool) (pf : Nat := 0) : KM Unit := do
           for p in [0:8] do
             BlockM.store (lane sigma[p]! (128 * c + 64 * part)) cols[p]!
     rin.advance (.mem sStep)
+
+/-- The first pass of the in-place schedule for any radices after it: as `leafFn`, with the
+place of each of the 8 leaves of an iteration read from a table. (The digit-reversed places
+of 8 consecutive leaves have the form `leafFn` assumes only when the last radices are powers
+of two.) `in` advances 128 bytes per iteration.
+
+Parameters: `1`: `S` = bytes between the `R` inputs of a leaf; `2`: number of iterations;
+`3`: table of the byte offsets in `out` of the leaves, 8 per iteration; `4`: bytes added to
+`in` before the first iteration (a number of leaves that is not a multiple of 8 is finished
+by one more call on the last 8). -/
+def leafGFn (R : Nat) (fwd : Bool) : KM Unit := do
+  let k := butterflyK fwd R false
+  let sOut ← KM.gslot
+  let sCnt ← KM.gslot
+  KM.ins (.store sOut .rdx)
+  KM.ins (.mov .rdx (.mem (Mem.b .rdi 16)))
+  KM.ins (.store sCnt .rdx)
+  KM.ins (.add .rsi (.mem (Mem.b .rdi 32)))
+  let s ← KM.param 1
+  let gt ← KM.param 3
+  KM.ins (.add gt (.reg .rdi))
+  KM.give [.rdi, .rdx, .rcx]
+  let rin ← Rows.setup R .rsi s
+  let mut obs : Array Gpr := #[]
+  for _ in [0:8] do obs := obs.push (← KM.take)
+  let lane (l : Nat) (disp : Int) : Mem := Mem.b obs[l]! disp
+  KM.repeatDownMem sCnt do
+    for l in [0:8] do
+      KM.ins (.mov obs[l]! (.mem (Mem.b gt (8 * l))))
+      KM.ins (.add obs[l]! (.mem sOut))
+    KM.ins (.add gt (.imm 64))
+    KM.block .z (spec := some (leafSpec k R (fun r d => rin.mem r d) lane)) do
+      let mut inp : Array VId := #[]
+      for r in [0:R] do
+        let lo ← BlockM.load (rin.mem r 0)
+        let hi ← BlockM.load (rin.mem r 64)
+        let (re, im) ← deinterleave lo hi
+        inp := (inp.push re).push im
+      let outs ← instSplit k (inp[·]!)
+      for part in [0:2] do
+        for c in [0:R / 8] do
+          let cols ← transposeS ((Array.range 8).map fun i => outs[2 * (8 * c + i) + part]!)
+          for p in [0:8] do
+            BlockM.store (lane sigma[p]! (128 * c + 64 * part)) cols[p]!
+    rin.advance (.imm 128)
 
 /-- A twiddled pass of the in-place schedule; `last`: the outputs are written as interleaved
 complex numbers (the last pass).
@@ -1256,6 +1302,11 @@ def FnDef.raw (name : String) (body : Array Instr) : FnDef :=
 
 def leafRadices : List Nat := [8, 16, 32]
 def ditRadices : List Nat := [2, 4, 8, 16, 32]
+/-- First radices of the in-place schedule when the later ones are not all powers of two
+(`leafGFn`). -/
+def leafGRadices : List Nat := [8, 16]
+/-- Radices of the twiddled in-place passes that are not powers of two. -/
+def ditRadicesM : List Nat := [3, 5, 6, 7, 9, 10, 11, 12, 13, 15]
 
 /-- Prefetch variants of the leaf passes (`leafFn`): none, and the next outputs. -/
 def leafPrefetch : List Nat := [0, 2]
@@ -1321,6 +1372,10 @@ def registry : Array FnDef := Id.run do
     for R in stkRadices do
       r := r.push (.km (bstkName R fwd false) (bstkFn R fwd))
       r := r.push (.km (bstkName R fwd true) (bstkLastFn R fwd))
+    for R in leafGRadices do r := r.push (.km (leafGName R fwd) (leafGFn R fwd))
+    for R in ditRadicesM do
+      r := r.push (.km (ditName R fwd false) (ditFn R fwd false))
+      r := r.push (.km (ditName R fwd true) (ditFn R fwd true))
   return r
 
 /-- Index of a function in `lfa_table`. -/

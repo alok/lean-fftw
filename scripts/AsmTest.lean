@@ -342,10 +342,11 @@ def stkMain (args : List String) : IO UInt32 := do
   IO.println s!"Stockham plans: {n} runs, {bad} mismatches"
   return if bad == 0 then 0 else 1
 
-/-- `one MODE N R₀ R₁ …` (`MODE` = `stockham`, `blocked`): run one plan, forward and
+/-- `one MODE N R₀ R₁ …` (`MODE` = `stockham`, `blocked`, `inplace`): run one plan, forward and
 backward, out of place and in place, against the Lean reference; print its time. -/
 def oneMain (args : List String) : IO UInt32 := do
-  let mode := if args.head! == "blocked" then Mode.blocked else .stockham
+  let mode := if args.head! == "blocked" then Mode.blocked
+    else if args.head! == "inplace" then .inplace else .stockham
   let nums := args.tail.map String.toNat!
   let N := nums[0]!
   let rs := (nums.drop 1).toArray
@@ -358,6 +359,11 @@ def oneMain (args : List String) : IO UInt32 := do
     let ref := refTransform fwd N rs x
     for inplace in [false, true] do
       let y := if inplace then randArr (2 * N) (N + 7) else zeros (2 * N + 24)
+      -- the in-place schedule reads its input after writing, so its plan depends on the placement
+      let plan ← (if mode == .inplace && inplace then do
+          let some src' := mkPlan N fwd rs mode 0 0 true base | pure plan
+          src'.build true
+        else pure plan)
       plan.run (if inplace then addr y else addr x) (addr y)
       let y' : FloatArray := if inplace then y else ⟨y.data.extract 0 (2 * N)⟩
       let clean := inplace || (y[2 * N]! == 0.0 && y[2 * N + 1]! == 0.0 && y[2 * N + 23]! == 0.0)

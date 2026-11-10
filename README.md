@@ -92,11 +92,14 @@ N = 1024 up ([docs/LEAN_DRIVEN.md](docs/LEAN_DRIVEN.md)).
 
 **Speed of the assembly engine.** The protocol figures under Results were measured with the
 C engine. Quick measurements of the assembly engine on Emerald Rapids (one core, FFTW in
-patient mode, not yet the full protocol): geometric mean about 0.78× FFTW's time over the
-powers of two, with FFTW still 3–7% ahead at N = 256, 512 and 2^17; 0.49–0.91× for the
-composite sizes from 18 to 240; between 0.65× and 1.19× for larger sizes that are not powers
-of two, except N = 50000 at 1.40×. At every size measured it is at least as fast as the C
-engine it replaced. A protocol run with confidence intervals is still to come.
+patient mode, not yet the full protocol): at commit `79069f3`, geometric mean about 0.78×
+FFTW's time over the powers of two, with FFTW still 3–7% ahead at N = 256, 512 and 2^17, and
+0.49–0.91× for the composite sizes from 18 to 240. Since then the powers of two from 16 to
+2^18 became 7% faster on geometric mean ([docs/COST_MODEL.md](docs/COST_MODEL.md)), and the
+in-place schedule now covers sizes that are not powers of two: ten such sizes from 360 to
+50000 run at 0.73–1.04× FFTW's time, geometric mean 0.89 (before: 0.71–1.50×, geometric mean
+1.07; N = 50000 went from 1.50× to 1.04×). A protocol run with confidence intervals is still
+to come.
 
 ## How the pieces fit
 
