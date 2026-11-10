@@ -87,6 +87,9 @@ def enumerate (N : Nat) : Array Cand := Id.run do
     if N % f == 0 && N > f then
       acc := tails ms N #[f] (N / f) 0 0 true false acc
       acc := tails ms N #[f] (N / f) (ms.size - 1) 1 true false acc
+  -- two-pass kernels whose radices are not all among the above
+  for (a, b, _) in cfusedSet ++ ctwoSet do
+    if a * b == N && !(acc.any fun c => c.rs == #[a, b]) then acc := emitAll N #[a, b] acc
   return acc
 
 /-! ## Measurement -/

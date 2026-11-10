@@ -878,7 +878,9 @@ def ctranspose (vlc : Nat) (rows : Array VId) : BlockM (Array VId) := do
 
 /-- The whole transform of size `N = R1·R2` (plan `[R1, R2]`) on vectors of `VLc` complex
 numbers, with the twiddles of the second pass as constants (the values of
-`passTwiddles (cosSin2PiTable N) fwd N R2 R1`). Requires `VLc ∣ R1`, `VLc ∣ R2`.
+`passTwiddles (cosSin2PiTable N) fwd N R2 R1`). Requires `VLc ∣ R1` and `R2 ≥ VLc`: the
+first pass takes `VLc` consecutive butterflies at a time, and when `R2` is not a multiple of
+`VLc` its last group is the last `VLc` butterflies (some are computed twice).
 
 `mem = false`: everything stays in registers; all loads precede all stores, so `in == out`
 is allowed. `mem = true`: the results of the first pass are stored in a work array and read
@@ -898,18 +900,21 @@ def cfusedFn (R1 R2 vlc : Nat) (fwd mem : Bool) : KM Unit := do
   let w := widthOf vlc
   -- twiddle `(r, k)` of the second pass, real (`e = 0`) or imaginary part
   let twBits (r k e : Nat) : UInt64 := (tw[(2 * (r - 1) + e) * R1 + k]!).toBits
-  -- pass 1, butterflies `j = jb·VLc + c` (`c` = complex lane): input `r` is `in[j + r·R2]`
-  let pass1 (jb : Nat) : BlockM (Array VId) := do
+  -- the first butterflies of the groups of pass 1
+  let j0s : List Nat := (List.range (R2 / vlc)).map (· * vlc) ++
+    (if R2 % vlc == 0 then [] else [R2 - vlc])
+  -- pass 1, butterflies `j = j0 + c` (`c` = complex lane): input `r` is `in[j + r·R2]`
+  let pass1 (j0 : Nat) : BlockM (Array VId) := do
     let mut x : Array VId := #[]
     for r in [0:R1] do
-      x := x.push (← BlockM.load (Mem.b .rsi (16 * (jb * vlc + r * R2))))
+      x := x.push (← BlockM.load (Mem.b .rsi (16 * (j0 + r * R2))))
     instC k1 vlc (x[·]!)
-  let spec1 (jb : Nat) : SpecB (Array (Array Nat)) := do
+  let spec1 (j0 : Nat) : SpecB (Array (Array Nat)) := do
     let mut o : Array (Array Nat) := #[]
     for c in [0:vlc] do
       let mut inp : Array Nat := #[]
       for r in [0:R1] do
-        let cell := Mem.b .rsi (16 * (jb * vlc + r * R2))
+        let cell := Mem.b .rsi (16 * (j0 + r * R2))
         inp := inp.push (← SpecB.node (.inp cell (2 * c)))
         inp := inp.push (← SpecB.node (.inp cell (2 * c + 1)))
       o := o.push (← SpecB.kernel k1 inp)
@@ -939,10 +944,10 @@ def cfusedFn (R1 R2 vlc : Nat) (fwd mem : Bool) : KM Unit := do
       (Mem.b .rdx (16 * (kb * vlc + r * R1)), (Array.range (2 * vlc)).map fun i => o[i / 2]![2 * r + i % 2]!)
   if mem then
     -- one block per group of butterflies: within a block all loads precede all stores
-    for jb in [0:R2 / vlc] do
-      let cell (kb m : Nat) : Mem := Mem.b mid (16 * (kb * vlc + (jb * vlc + m) * R1))
+    for j0 in j0s do
+      let cell (kb m : Nat) : Mem := Mem.b mid (16 * (kb * vlc + (j0 + m) * R1))
       let spec : Spec := SpecB.spec do
-        let o ← spec1 jb
+        let o ← spec1 j0
         let mut res : List (Mem × Array Nat) := []
         for kb in [0:R1 / vlc] do
           for m in [0:vlc] do
@@ -950,7 +955,7 @@ def cfusedFn (R1 R2 vlc : Nat) (fwd mem : Bool) : KM Unit := do
               o[m]![2 * (kb * vlc + i / 2) + i % 2]!) :: res
         return res
       KM.block w (spec := some spec) do
-        let outs ← pass1 jb
+        let outs ← pass1 j0
         for kb in [0:R1 / vlc] do
           let cols ← ctranspose vlc ((Array.range vlc).map fun l => outs[kb * vlc + l]!)
           for m in [0:vlc] do
@@ -964,8 +969,10 @@ def cfusedFn (R1 R2 vlc : Nat) (fwd mem : Bool) : KM Unit := do
         pass2 kb (x[·]!)
   else
     let spec : Spec := SpecB.spec do
-      let mut o1 : Array (Array Nat) := #[]
-      for jb in [0:R2 / vlc] do o1 := o1 ++ (← spec1 jb)
+      let mut o1 : Array (Array Nat) := Array.replicate R2 #[]
+      for j0 in j0s do
+        let o ← spec1 j0
+        for c in [0:vlc] do o1 := o1.set! (j0 + c) o[c]!
       let mut res : List (Mem × Array Nat) := []
       for kb in [0:R1 / vlc] do
         let o := o1
@@ -973,12 +980,12 @@ def cfusedFn (R1 R2 vlc : Nat) (fwd mem : Bool) : KM Unit := do
       return res
     KM.block w (spec := some spec) do
       let mut X : Array (Array VId) := Array.replicate (R1 / vlc) (Array.replicate R2 0)
-      for jb in [0:R2 / vlc] do
-        let outs ← pass1 jb
+      for j0 in j0s do
+        let outs ← pass1 j0
         for kb in [0:R1 / vlc] do
           let cols ← ctranspose vlc ((Array.range vlc).map fun l => outs[kb * vlc + l]!)
           for m in [0:vlc] do
-            X := X.set! kb ((X[kb]!).set! (jb * vlc + m) cols[m]!)
+            X := X.set! kb ((X[kb]!).set! (j0 + m) cols[m]!)
       for kb in [0:R1 / vlc] do
         pass2 kb ((X[kb]!)[·]!)
 
@@ -1220,12 +1227,27 @@ def csmallSizes : List Nat :=
 /-- `(R1, R2, VLc)` of the two-pass transforms in registers. -/
 def cfusedSet : List (Nat × Nat × Nat) :=
   [(2, 2, 2), (2, 4, 2), (4, 2, 2), (4, 4, 2), (4, 4, 4), (4, 8, 4), (8, 4, 4), (8, 8, 4),
-   (4, 16, 4), (16, 4, 4), (8, 16, 4), (16, 8, 4)]
+   (4, 16, 4), (16, 4, 4), (8, 16, 4), (16, 8, 4),
+   -- sizes that are not powers of two, up to 100
+   (6, 3, 2), (2, 9, 2), (4, 5, 4), (2, 11, 2), (4, 6, 4), (2, 13, 2), (4, 7, 4), (2, 15, 2),
+   (6, 5, 2), (4, 9, 4), (4, 10, 4), (8, 5, 4), (6, 7, 2), (14, 3, 2), (4, 11, 4), (12, 4, 4),
+   (4, 12, 4), (10, 5, 2), (4, 13, 4), (6, 9, 2), (18, 3, 2), (8, 7, 4), (4, 15, 4), (12, 5, 4),
+   (6, 11, 2), (10, 7, 2), (14, 5, 2), (12, 6, 4), (8, 9, 4), (6, 13, 2), (20, 4, 4),
+   (8, 10, 4), (12, 7, 4), (8, 11, 4), (6, 15, 2), (10, 9, 2), (24, 4, 4), (12, 8, 4),
+   (14, 7, 2), (20, 5, 4)]
 
 /-- `(R1, R2, VLc)` of the two-pass transforms through a work array. -/
 def ctwoSet : List (Nat × Nat × Nat) :=
   [(8, 16, 4), (16, 8, 4), (4, 32, 4), (32, 4, 4), (16, 16, 4), (8, 32, 4), (32, 8, 4),
-   (16, 32, 4), (32, 16, 4), (32, 32, 4)]
+   (16, 32, 4), (32, 16, 4), (32, 32, 4),
+   -- sizes that are not powers of two, from 64 to 256
+   (6, 11, 2), (10, 7, 2), (14, 5, 2), (12, 6, 4), (8, 9, 4), (6, 13, 2), (20, 4, 4),
+   (8, 10, 4), (12, 7, 4), (8, 11, 4), (6, 15, 2), (10, 9, 2), (24, 4, 4), (12, 8, 4),
+   (14, 7, 2), (20, 5, 4), (8, 13, 4), (12, 9, 4), (10, 11, 2), (28, 4, 4), (16, 7, 4),
+   (8, 15, 4), (12, 10, 4), (14, 9, 2), (18, 7, 2), (20, 7, 4), (12, 12, 4), (10, 15, 2),
+   (40, 4, 4), (18, 9, 2), (24, 7, 4), (12, 15, 4), (48, 4, 4), (28, 7, 4), (20, 10, 4),
+   (14, 15, 2), (36, 6, 4), (56, 4, 4), (20, 12, 4), (36, 7, 4),
+   (16, 6, 4), (16, 9, 4), (16, 10, 4), (16, 12, 4), (16, 15, 4), (16, 5, 4)]
 
 /-- Radices of the Stockham passes. -/
 def stkRadices : List Nat := [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]
