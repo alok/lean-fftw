@@ -68,6 +68,9 @@ structure FnState where
   gslots : Nat := 0
   foldLimit : Nat := 2
   sched : Nat := 1
+  metric : Nat := 0
+  foldAlso : List Nat := []
+  constAlso : List Nat := []
 
 abbrev FnM := StateM FnState
 
@@ -156,7 +159,8 @@ def FnState.finish (s : FnState) (pool : Pool) (global : Bool := true) :
     | .i ins => body := body.push ins
     | .blk b spec =>
         let cfg : ACfg := { w := b.w, regs := regOrder b.w s.pins.size, pinned,
-                            foldLimit := s.foldLimit, sched := s.sched, slotBase := gBytes }
+                            foldLimit := s.foldLimit, sched := s.sched, slotBase := gBytes,
+                            metric := s.metric, foldAlso := s.foldAlso, constAlso := s.constAlso }
         let a ← (allocBlock cfg b pool).mapError fun e => s!"{s.name}: {e}"
         pool := a.pool
         match spec with
@@ -208,8 +212,9 @@ structure AsmFile where
 
 /-- Add a function built by `body`. -/
 def AsmFile.addFn (f : AsmFile) (name : String) (body : FnM Unit) (foldLimit : Nat := 2)
-    (global : Bool := true) (sched : Nat := 1) : Except String AsmFile := do
-  let ((), st) := body.run { name, foldLimit, sched }
+    (global : Bool := true) (sched : Nat := 1) (metric : Nat := 0) (foldAlso : List Nat := [])
+    (constAlso : List Nat := []) : Except String AsmFile := do
+  let ((), st) := body.run { name, foldLimit, sched, metric, foldAlso, constAlso }
   let (fn, pool) ← st.finish f.pool global
   return { f with fns := f.fns.push fn, pool }
 

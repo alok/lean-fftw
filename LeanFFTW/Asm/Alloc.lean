@@ -2,6 +2,7 @@
 Copyright (c) 2026 Lean FFTW contributors. Released under MIT license.
 -/
 import LeanFFTW.Asm.VIR
+import LeanFFTW.Asm.Ports
 
 /-!
 # Register allocation and instruction selection for straight-line vector code
@@ -18,6 +19,10 @@ import LeanFFTW.Asm.VIR
 * When no register is free, the value whose next use is furthest away is evicted (Belady's
   rule, which is optimal for straight-line code); values that can be reread from memory
   or the constant pool are dropped without a store.
+* The block is allocated in several orders of its operations (`VBlock.schedule`) and with
+  loads folded or not, and the result with the fewest micro-operations is kept
+  (`Alloc.cost`; the count is the one `LeanFFTW/Proof/Ports.lean` proves a bound about, and
+  `docs/COST_MODEL.md` has the measurements).
 
 Nothing here is trusted: the instructions produced are checked against the block by
 symbolic execution (`LeanFFTW/Asm/Check.lean`).
@@ -37,9 +42,20 @@ structure ACfg where
   foldLimit : Nat := 2
   /-- byte offset from `rsp` of the first spill slot -/
   slotBase : Nat := 0
-  /-- instruction order: `0` as written; `1` the shortest of the written order and the four
-  reorderings of `VBlock.schedule`; `2 + k` reordering `k` -/
+  /-- instruction order: `0` as written; `1` the cheapest of the written order and the
+  reorderings of `VBlock.schedule`; `2 + k` reordering `k` (`schedOrders`) -/
   sched : Nat := 1
+  /-- what "cheapest" counts: `0` instructions; `1` micro-operations (`Instr.uops`: a memory
+  operand and a spill are work for the processor that an instruction count does not show) -/
+  metric : Nat := 0
+  /-- with `sched = 1`, also try these values of `foldLimit` -/
+  foldAlso : List Nat := []
+  /-- a constant with at least this many uses left goes to a register when one is free,
+  and gives it back before any other value is evicted (`0`: constants are always memory
+  operands) -/
+  constReg : Nat := 0
+  /-- with `sched = 1`, also try these values of `constReg` -/
+  constAlso : List Nat := []
 
 structure AState where
   out : Array Instr := #[]
@@ -108,6 +124,25 @@ def pickReg (avoid : List VReg) : AM VReg := do
     if !s.holder.contains r.n && !avoid.contains r then
       modify fun s => { s with touched := s.touched ||| (1 <<< r.n) }
       return r
+  let isConst (v : VId) : Bool :=
+    match s.remat[v]? with
+    | some (.bcast _) | some (.cvec _) | some .zero => true
+    | _ => false
+  -- constants held in registers because one was free give way first
+  if c.constReg > 0 then
+    let mut bc : Option (VReg × Nat) := none
+    for r in c.regs do
+      if avoid.contains r then continue
+      let some v := s.holder[r.n]? | continue
+      if isConst v then
+        let nu ← nextUse v
+        let better := match bc with
+          | none => true
+          | some (_, bn) => bn < nu
+        if better then bc := some (r, nu)
+    if let some (r, _) := bc then
+      evict r
+      return r
   let mut best : Option (VReg × Nat × Bool) := none
   for r in c.regs do
     if avoid.contains r then continue
@@ -121,6 +156,12 @@ def pickReg (avoid : List VReg) : AM VReg := do
   match best with
   | some (r, _, _) => evict r; return r
   | none => throw "register allocation: no register available"
+
+/-- Is a register free? -/
+def hasFree : AM Bool := do
+  let c ← read
+  let s ← get
+  return c.regs.any fun r => !s.holder.contains r.n
 
 def quadLabel (bits : UInt64) : AM String := do
   let s ← get
@@ -170,7 +211,9 @@ def memSrc? (v : VId) : AM (Option VSrc) := do
   | some (.load m) =>
       if (← remaining v) ≤ c.foldLimit && !s.noFold.contains v then return some (.mem m)
       else return none
-  | some (.bcast bits) => return some (← bcastSrc bits)
+  | some (.bcast bits) =>
+      if c.constReg > 0 && (← remaining v) ≥ c.constReg && (← hasFree) then return none
+      return some (← bcastSrc bits)
   | some (.cvec bits) => return some (.mem (Mem.rip (← vecLabel bits)))
   | _ => return none
 
@@ -446,13 +489,21 @@ inductive OpOrder where
 /-- Reorder a block so that every value is computed just before its first use: the stores
 keep their order, and each store is preceded by the not yet computed part of the expression
 it stores, operands first (in the order `ord`). Loads are not moved across stores. Values
-are then live for shorter spans, which saves spills. -/
-partial def VBlock.schedule (b : VBlock) (ord : OpOrder) : VBlock := Id.run do
+are then live for shorter spans, which saves spills.
+
+With `eager`, an operation is also computed as soon as all its operands are there, when one
+of them was just computed or just used: the two halves of a butterfly and the two parts of
+a complex product come out together, so their operands die at once and a value read from
+memory twice is read while it is still in a register. -/
+partial def VBlock.schedule (b : VBlock) (ord : OpOrder) (eager : Bool := false) : VBlock :=
+  Id.run do
   let mut defs : HashMap VId (Nat × VOp) := {}
   let mut su : HashMap VId Nat := {}
+  let mut users : HashMap VId (Array VId) := {}
   for i in [0:b.stmts.size] do
     if let .df id op := b.stmts[i]! then
       defs := defs.insert id (i, op)
+      for a in op.args.eraseDups do users := users.insert a ((users.getD a #[]).push id)
       -- Sethi–Ullman number: registers needed to compute the value as a tree
       let ls := (op.args.map fun a => su.getD a 0).toArray.qsort (· > ·)
       let mut n := if op.args.isEmpty then 0 else 1
@@ -461,6 +512,9 @@ partial def VBlock.schedule (b : VBlock) (ord : OpOrder) : VBlock := Id.run do
   let isLoad : VOp → Bool
     | .load _ | .loadz _ _ => true
     | _ => false
+  let isConst : VOp → Bool
+    | .bcast _ | .cvec _ | .zero => true
+    | _ => false
   let idx (v : VId) : Nat := (defs[v]?.map (·.1)).getD 0
   let args (op : VOp) : List VId :=
     match ord with
@@ -468,26 +522,51 @@ partial def VBlock.schedule (b : VBlock) (ord : OpOrder) : VBlock := Id.run do
     | .early => (op.args.toArray.qsort fun x y => idx x < idx y).toList
     | .late => (op.args.toArray.qsort fun x y => idx x > idx y).toList
     | .deep => (op.args.toArray.qsort fun x y => su.getD x 0 > su.getD y 0).toList
-  let rec need (v : VId) (st : HashMap VId Unit × Array VStmt) :
+  -- `lim`: position of the store being prepared; loads written after it stay after it
+  let ready (lim : Nat) (done : HashMap VId Unit) (n : VId) : Bool :=
+    !done.contains n &&
+    match defs[n]? with
+    | none => false
+    | some (_, op) => op.args.all fun x =>
+        done.contains x ||
+        match defs[x]? with
+        | some (i, xop) => isConst xop || (isLoad xop && i < lim)
+        | none => false
+  let rec need (lim : Nat) (v : VId) (st : HashMap VId Unit × Array VStmt) :
       HashMap VId Unit × Array VStmt :=
     if st.1.contains v then st else
     match defs[v]? with
     | none => st
     | some (_, op) =>
-        let st := (args op).foldl (fun st a => need a st) st
-        (st.1.insert v (), st.2.push (.df v op))
+        let st := (args op).foldl (fun st a => need lim a st) st
+        -- with `eager`, the value may have been computed when its last operand was
+        if st.1.contains v then st else
+        let st := (st.1.insert v (), st.2.push (.df v op))
+        if !eager || op.args.isEmpty then st else
+        (op.args ++ [v]).foldl (fun st a =>
+          match defs[a]? with
+          | some (_, aop) =>
+              if isConst aop then st else
+              (users.getD a #[]).foldl (fun st n => if ready lim st.1 n then need lim n st else st) st
+          | none => st) st
   let mut st : HashMap VId Unit × Array VStmt := ({}, #[])
   let mut pendingLoads : Array VId := #[]
-  for stm in b.stmts do
+  for pos in [0:b.stmts.size] do
+    let stm := b.stmts[pos]!
     match stm with
     | .df id op => if isLoad op then pendingLoads := pendingLoads.push id
     | .store _ v | .storek _ _ v =>
-        st := need v st
+        st := need pos v st
         -- loads written before this store stay before it
-        for l in pendingLoads do st := need l st
+        for l in pendingLoads do st := need pos l st
         pendingLoads := #[]
         st := (st.1, st.2.push stm)
   return { b with stmts := st.2 }
+
+/-- The reorderings `allocBlock` tries. -/
+def schedOrders : List (OpOrder × Bool) :=
+  [(.listed, false), (.early, false), (.late, false), (.deep, false),
+   (.listed, true), (.early, true), (.late, true), (.deep, true)]
 
 structure Alloc where
   instrs : Array Instr
@@ -524,18 +603,28 @@ def allocBlock1 (cfg : ACfg) (blk : VBlock) (pool : Pool) : Except String Alloc 
   let ((), s) ← (run.run cfg).run st
   return ⟨s.out, s.nSlots, s.pool, s.touched⟩
 
+/-- What `allocBlock` minimizes (`ACfg.metric`), then the number of instructions. -/
+def Alloc.cost (cfg : ACfg) (a : Alloc) : Nat :=
+  (if cfg.metric == 0 then 0 else (uopsOf a.instrs.toList).length) * 1000000 + a.instrs.size
+
 /-- Allocate registers for a block: the block as written and its reorderings
-(`VBlock.schedule`) are all allocated, and the shortest result is kept. -/
+(`VBlock.schedule`) are all allocated, and the cheapest result is kept. -/
 def allocBlock (cfg : ACfg) (blk : VBlock) (pool : Pool) : Except String Alloc := do
   let blk := blk.fold.lower.dce
-  let ords := [OpOrder.listed, .early, .late, .deep]
   if cfg.sched ≥ 2 then
-    return ← allocBlock1 cfg (blk.schedule (ords.getD (cfg.sched - 2) .listed)) pool
+    let (ord, eager) := schedOrders.getD (cfg.sched - 2) (.listed, false)
+    return ← allocBlock1 cfg (blk.schedule ord eager) pool
   let mut best ← allocBlock1 cfg blk pool
   if cfg.sched == 1 then
-    for ord in ords do
-      let a ← allocBlock1 cfg (blk.schedule ord) pool
-      if a.instrs.size < best.instrs.size then best := a
+    for fl in (cfg.foldLimit :: cfg.foldAlso).eraseDups do
+      for cr in (cfg.constReg :: cfg.constAlso).eraseDups do
+        let cfg' := { cfg with foldLimit := fl, constReg := cr }
+        if fl != cfg.foldLimit || cr != cfg.constReg then
+          let a ← allocBlock1 cfg' blk pool
+          if a.cost cfg < best.cost cfg then best := a
+        for (ord, eager) in schedOrders do
+          let a ← allocBlock1 cfg' (blk.schedule ord eager) pool
+          if a.cost cfg < best.cost cfg then best := a
   return best
 
 end LeanFFTW.Asm

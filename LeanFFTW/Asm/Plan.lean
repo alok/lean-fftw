@@ -147,6 +147,10 @@ opaque runRaw (mem : @& FloatArray) (root inp out reps : USize) : IO Unit
 @[extern "lfa_zero"]
 opaque zeroRaw (p n : USize) : IO Unit
 
+/-- `n` iterations of 32 cycles of 512-bit arithmetic (see `calibFn`). -/
+@[extern "lfa_calib"]
+opaque calibRaw (n : USize) : IO Unit
+
 /-- The assembly returns to Lean through this function, which builds the `IO` result. -/
 @[export lfa_ok_unit]
 def okUnit (_ : USize) : IO Unit := pure ()

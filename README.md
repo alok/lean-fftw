@@ -52,6 +52,9 @@ source of the test harness; Lean FFTW never links or calls it.
     computes its specification on every machine state (`check_sound`);
   * the planner's operation counts are the query costs of a CSLib program that is also
     proved to compute the DFT;
+  * every block of emitted code has a lower bound on its running time, proved for every
+    schedule of its micro-operations on the ports of the processor model
+    (`block_cycles_ge`); measured passes run 5 to 20% above it;
   * optimizations are proved too: the generator's rewrites (FMA contraction,
     tan-factored twiddle rotations) and its algorithms for radices that are not powers
     of two (paired odd-length DFTs, factored mixed radix, the Good–Thomas prime factor
@@ -59,6 +62,7 @@ source of the test harness; Lean FFTW never links or calls it.
     code is a `@[csimp]` replacement proved equal to its specification.
 
   Details: [docs/THEOREMS.md](docs/THEOREMS.md).
+  The cost of the emitted code, proved and measured: [docs/COST_MODEL.md](docs/COST_MODEL.md).
 
 ## No C in the library: Lean writes the machine code
 

@@ -1183,6 +1183,17 @@ def addrFn : Array Instr := #[.lea .rax (Mem.b .rdi 24), .ret]
 def zeroFn : Array Instr :=
   #[.mov .rcx (.reg .rsi), .mov .rax (.imm 0), .repStosq, .mov .rdi (.imm 0), .jmp "lfa_ok_unit@PLT"]
 
+/-- `lfa_calib(n)`, called from Lean as an `IO Unit`: `n` times a chain of 8 fused
+multiply-adds on 512-bit registers, each waiting for the one before. A fused multiply-add
+takes 4 cycles, so one iteration is 32 cycles: timing it gives the clock rate the processor
+runs 512-bit code at. -/
+def calibFn : Array Instr :=
+  let l := ".Llfa_calib"
+  let z (n : Nat) : Instr := .vbin .xor .z ⟨n⟩ ⟨n⟩ (.reg ⟨n⟩)
+  #[z 16, z 17, z 18, .align 16, .label l] ++
+  (Array.replicate 8 (.vfma .fmadd .f231 .z ⟨16⟩ ⟨17⟩ (.reg ⟨18⟩))) ++
+  #[.dec .rdi, .jcc .ne l, .mov .rdi (.imm 0), .jmp "lfa_ok_unit@PLT"]
+
 /-! ## The functions of the engine
 
 `lfa_table[i]` is the address of function `i` of `registry`; records name functions by this
@@ -1194,12 +1205,42 @@ structure GenOpts where
   foldLimit : Nat := 2
   /-- instruction order (`ACfg.sched`) -/
   sched : Nat := 1
+  /-- what the choice of order minimizes (`ACfg.metric`) -/
+  metric : Nat := 1
+  /-- other values of `foldLimit` to try (`ACfg.foldAlso`) -/
+  foldAlso : List Nat := [1]
+  /-- values of `ACfg.constReg` to try besides `0` -/
+  constAlso : List Nat := []
   deriving Repr, Inhabited
+
+/-- Generator options by function name, from arguments `PREFIX=foldLimit,sched[,metric[,foldAlso[,constAlso]]]`:
+each sets the options of the functions whose name starts with `PREFIX` (later arguments win).
+For experiments. -/
+def GenOpts.rules (args : List String) : String → GenOpts :=
+  let rules := args.filterMap fun a =>
+    match a.splitOn "=" with
+    | [pre, v] =>
+        match v.splitOn "," with
+        | [f, s] =>
+            some (pre, ({ foldLimit := f.toNat!, sched := s.toNat!, metric := 0, foldAlso := [] } :
+              GenOpts))
+        | [f, s, m] =>
+            some (pre, ({ foldLimit := f.toNat!, sched := s.toNat!, metric := m.toNat!,
+                          foldAlso := [] } : GenOpts))
+        | [f, s, m, fa] =>
+            some (pre, ({ foldLimit := f.toNat!, sched := s.toNat!, metric := m.toNat!,
+                          foldAlso := [fa.toNat!] } : GenOpts))
+        | [f, s, m, fa, ca] =>
+            some (pre, ({ foldLimit := f.toNat!, sched := s.toNat!, metric := m.toNat!,
+                          foldAlso := [fa.toNat!], constAlso := [ca.toNat!] } : GenOpts))
+        | _ => none
+    | _ => none
+  fun name => rules.foldl (fun o (pre, v) => if name.startsWith pre then v else o) {}
 
 /-- Add a function written in `KM`. -/
 def addKM (f : AsmFile) (name : String) (body : KM Unit) (o : GenOpts := {}) :
     Except String AsmFile :=
-  f.addFn name (do let _ ← body.run {}; pure ()) o.foldLimit true o.sched
+  f.addFn name (do let _ ← body.run {}; pure ()) o.foldLimit true o.sched o.metric o.foldAlso o.constAlso
 
 structure FnDef where
   name : String
@@ -1287,13 +1328,16 @@ def fnIndex : Std.HashMap String Nat :=
   (List.range registry.size).foldl (fun m i => m.insert registry[i]!.name i) {}
 
 /-- The functions of the engine. -/
-def engineFile (opts : String → GenOpts := fun _ => {}) : Except String AsmFile := do
+def engineFile (opts : String → GenOpts := fun _ => {})
+    (only : String → Bool := fun _ => true) : Except String AsmFile := do
   let mut f : AsmFile := {}
-  for d in registry do f ← d.add f (opts d.name)
+  for d in registry do
+    if only d.name then f ← d.add f (opts d.name)
   f := f.addRaw "lfa_call" callFn
   f := f.addRaw "lfa_run" runFn
   f := f.addRaw "lfa_addr" addrFn
   f := f.addRaw "lfa_zero" zeroFn
+  f := f.addRaw "lfa_calib" calibFn
   f := f.addRaw "lfa_loop_range" loopRangeFn
   f := f.addRaw "lfa_worker" workerFn
   f := f.addRaw "lfa_pool_load" poolLoadFn

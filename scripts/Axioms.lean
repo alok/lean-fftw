@@ -42,3 +42,8 @@ import LeanFFTW
 #print axioms LeanFFTW.Native.exec_eq_refTransform
 #print axioms LeanFFTW.Native.execInto_eq_refTransform
 #print axioms LeanFFTW.Asm.check_sound
+#print axioms LeanFFTW.Asm.eval_blockQ_machine
+#print axioms LeanFFTW.Asm.eval_blockQ_checker
+#print axioms LeanFFTW.Asm.cost_blockQ
+#print axioms LeanFFTW.Asm.Schedule.bound_le
+#print axioms LeanFFTW.Asm.block_cycles_ge

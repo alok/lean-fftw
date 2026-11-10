@@ -135,6 +135,22 @@ with weights gives its cost. The planner ranks candidates by these counts.
 | `cost_stockhamQ` | for every oracle, `FreeM.cost oracle (EngineQ.weight W) (stockhamQ …) = stockhamCost W fwd N rs`, the closed-form count (`Gen/OpCount.lean`) the planner computes |
 | `stockhamQ_dft_and_cost` | over the reals with exact twiddles, the same program computes the DFT **and** costs `stockhamCost W fwd N rs` |
 
+### The cost of the emitted code (`Proof/Ports.lean`)
+
+A block of emitted instructions is a query program whose only query is "run this
+instruction on this state" (`blockQ`). Three handlers give it its semantics, its checker
+run and its cost, and the cost is proved to be a lower bound on the running time of the
+block in a port model of the processor. [COST_MODEL.md](COST_MODEL.md) has the model, the
+measurements against it and what it does not see.
+
+| Theorem | Statement |
+|---|---|
+| `eval_blockQ_machine` | `FreeM.eval (machine M ad) (blockQ is s) = run M ad is s`: answered by the processor model, the program is the semantics of `Asm/Sem.lean` |
+| `eval_blockQ_checker` | `FreeM.eval (checker cx) (blockQ is s) = s.bind (crun cx is)`: answered by the symbolic step, it is the run of the checker that `check_sound` is about |
+| `cost_blockQ` | for every oracle, `FreeM.cost oracle uopWeight (blockQ is s) = portsOf is`: the cost is the vector of micro-operation counts by port class, whatever the data |
+| `Schedule.bound_le` | every assignment of a list of micro-operations to cycles and ports they may use, with no port used twice in a cycle, takes at least `(Ports.ofList us).bound` cycles |
+| `block_cycles_ge` | for a block `is`: `(portsOf is).bound ≤ T` for every `Schedule (uopsOf is) T` |
+
 ### The Lean-compiled backend (`Proof/Native.lean`)
 
 `LeanFFTW.Native.exec p x` (`Native/Exec.lean`) is defined as `inplaceWith floatArith` of its

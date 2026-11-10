@@ -1,4 +1,5 @@
 import LeanFFTW.Asm.Planner
+import LeanFFTW.Asm.Ports
 
 open LeanFFTW LeanFFTW.Asm LeanFFTW.Gen
 
@@ -422,7 +423,37 @@ def twdumpMain (args : List String) : IO UInt32 := do
         IO.println s!"{N} {if fwd then 1 else 0} {m} {(b.get! (2 * m)).toBits} {(b.get! (2 * m + 1)).toBits}"
   return 0
 
+/-- `ports [PREFIX]`: the port counts and the cycle bound (`LeanFFTW/Asm/Ports.lean`) of every
+checked block of the engine functions whose name starts with `PREFIX`. -/
+def portsMain (args : List String) : IO UInt32 := do
+  let pre := args.getD 0 ""
+  match engineFile (GenOpts.rules args.tail) (·.startsWith pre) with
+  | .error e => IO.eprintln e; return 1
+  | .ok f =>
+      for fn in f.fns do
+        if fn.name.startsWith pre then
+          for (_, w, is) in fn.blocks do
+            if w == .z then
+              IO.println s!"{fn.name}: {(portsOf is.toList).print} instrs {is.size}"
+      return 0
+
+/-- `calib`: the clock rate of 512-bit code, from a loop whose length in cycles is known
+(`calibFn`): nanoseconds per cycle and GHz, best of 10 runs. -/
+def calibMain : IO UInt32 := do
+  let n : Nat := 2000000
+  let mut best : Float := 1e30
+  for _ in [0:10] do
+    let t0 ← IO.monoNanosNow
+    calibRaw n.toUSize
+    let t1 ← IO.monoNanosNow
+    let d := (t1 - t0).toFloat / (32.0 * n.toFloat)
+    if d < best then best := d
+  IO.println s!"{best} ns per cycle, {1.0 / best} GHz"
+  return 0
+
 def main (args : List String) : IO UInt32 := do
+  if args.head? == some "calib" then return ← calibMain
+  if args.head? == some "ports" then return ← portsMain args.tail
   if args.head? == some "twdump" then return ← twdumpMain args.tail
   if args.head? == some "mixed" then return ← mixedMain args.tail
   if args.head? == some "one" then return ← oneMain args.tail
