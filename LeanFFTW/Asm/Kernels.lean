@@ -158,6 +158,10 @@ def Rows.setup (R : Nat) (b0 s : Gpr) : KM Rows := do
 def Rows.advance (rw : Rows) (step : GSrc) : KM Unit :=
   for b in rw.bases do KM.ins (.add b step)
 
+/-- Move every base back by `step`. -/
+def Rows.retreat (rw : Rows) (step : GSrc) : KM Unit :=
+  for b in rw.bases do KM.ins (.sub b step)
+
 def dirTag (fwd : Bool) : String := if fwd then "f" else "b"
 
 /-! ## The lane order σ and the data-movement steps -/
@@ -576,6 +580,262 @@ def stk0Fn (R : Nat) (fwd : Bool) : KM Unit := do
     copy m
   KM.ins (.label lEnd)
 
+/-! ## The blocked Stockham schedule
+
+The Stockham schedule on blocked data (blocks of 8 real parts and 8 imaginary parts, lane
+order σ), so that only the first pass splits complex numbers and only the last joins them.
+
+A pass on blocked data needs its runs of `ns` columns to be whole vectors. The first pass of
+radix `R₀` therefore writes each butterfly's `R₀` outputs in `R₀' = 8⌈R₀/8⌉` slots (*padded*):
+number `i = q·R₀ + k` (`k < R₀`) of an array is in slot `q·R₀' + k`. Every later `ns` is a
+multiple of `R₀`, hence a whole number of vectors in slots. The slots `k ≥ R₀` (the pads)
+hold copies of other outputs after the first pass and are transformed like data (their
+twiddles are zero); the last pass, which writes ordinary interleaved numbers, stores what
+they became where a later vector of the same row overwrites it, and its very last vector
+goes through a buffer. No instruction is masked.
+
+The first pass takes 8 consecutive butterflies per iteration; when their number is not a
+multiple of 8, a last iteration recomputes the last 8. -/
+
+/-- Slots of a run of `R` numbers. -/
+def padUp (R : Nat) : Nat := (R + 7) / 8 * 8
+
+def bstk0Name (R : Nat) (fwd : Bool) : String := s!"lfa_bstk0_r{R}_{dirTag fwd}"
+def bstkName (R : Nat) (fwd last : Bool) : String :=
+  s!"lfa_bstk{if last then "last" else ""}_r{R}_{dirTag fwd}"
+
+/-- What the block of `bstk0Fn` computes: lane `p` runs the kernel on the complex numbers
+`σ p` of the rows, and slot `8c + σ ℓ` of its outputs (output `(8c + σ ℓ) mod R`) is stored
+in lane `ℓ` of block `c` of butterfly `σ p`. -/
+def bstk0Spec (k : Kernel) (R : Nat) (row : Nat → Int → Mem) (lane : Nat → Int → Mem) : Spec :=
+  SpecB.spec do
+    let mut outs : Array (Array Nat) := #[]
+    for p in [0:8] do
+      let mut inp : Array Nat := #[]
+      for r in [0:R] do
+        let cell := row r (if p % 2 == 0 then 0 else 64)
+        inp := inp.push (← SpecB.node (.inp cell (p - p % 2)))
+        inp := inp.push (← SpecB.node (.inp cell (p - p % 2 + 1)))
+      outs := outs.push (← SpecB.kernel k inp)
+    let mut res : List (Mem × Array Nat) := []
+    for part in [0:2] do
+      for c in [0:padUp R / 8] do
+        for q in [0:8] do
+          res := (lane sigma[q]! (128 * c + 64 * part),
+            (Array.range 8).map fun l => outs[q]![2 * ((8 * c + sigma[l]!) % R) + part]!) :: res
+    return res
+
+/-- What a block of a twiddled pass on blocked data computes: lane `p` runs the kernel on
+lane `p` of the rows of the source and of the twiddles. `last`: the results are stored
+interleaved. -/
+def bstkSpec (k : Kernel) (R : Nat) (last : Bool) (rin rout : Nat → Int → Mem) (tw : Int → Mem) :
+    Spec :=
+  SpecB.spec do
+    let mut outs : Array (Array Nat) := #[]
+    for p in [0:8] do
+      let mut inp : Array Nat := #[]
+      for r in [0:R] do
+        inp := inp.push (← SpecB.node (.inp (rin r 0) p))
+        inp := inp.push (← SpecB.node (.inp (rin r 64) p))
+      for r in [1:R] do
+        inp := inp.push (← SpecB.node (.inp (tw (128 * (r - 1))) p))
+        inp := inp.push (← SpecB.node (.inp (tw (128 * (r - 1) + 64)) p))
+      outs := outs.push (← SpecB.kernel k inp)
+    let mut res : List (Mem × Array Nat) := []
+    for r in [0:R] do
+      let re (l : Nat) : Nat := outs[l]![2 * r]!
+      let im (l : Nat) : Nat := outs[l]![2 * r + 1]!
+      if last then
+        res := (rout r 0, (Array.range 8).map fun l => if l % 2 == 0 then re l else im (l - 1)) :: res
+        res := (rout r 64, (Array.range 8).map fun l => if l % 2 == 0 then re (l + 1) else im l) :: res
+      else
+        res := (rout r 0, (Array.range 8).map re) :: res
+        res := (rout r 64, (Array.range 8).map im) :: res
+    return res
+
+/-- The block of a twiddled pass on blocked data. -/
+def bstkBlock (k : Kernel) (R : Nat) (last : Bool) (rin rout : Nat → Int → Mem) (tw : Int → Mem) :
+    BlockM Unit := do
+  let mut inp : Array VId := #[]
+  for r in [0:R] do
+    inp := inp.push (← BlockM.load (rin r 0))
+    inp := inp.push (← BlockM.load (rin r 64))
+  for r in [1:R] do
+    inp := inp.push (← BlockM.load (tw (128 * (r - 1))))
+    inp := inp.push (← BlockM.load (tw (128 * (r - 1) + 64)))
+  let outs ← instSplit k (inp[·]!)
+  for r in [0:R] do
+    let (a, b) ← (if last then interleave outs[2 * r]! outs[2 * r + 1]!
+                  else pure (outs[2 * r]!, outs[2 * r + 1]!))
+    BlockM.store (rout r 0) a
+    BlockM.store (rout r 64) b
+
+/-- The first pass of the blocked Stockham schedule: interleaved `in` → padded blocked work
+array. Butterfly `j` reads the numbers `j + r·N/R` and writes the slots `j·R' …`.
+
+Parameters: `1`: the destination (byte offset from the record); `2`: `S = 16·N/R`;
+`3`: `⌊(N/R)/8⌋ ≥ 1` iterations; `4`: 1 when `N/R` is not a multiple of 8 (a last iteration
+recomputes the last 8 butterflies), else 0; `5`, `6`: the bytes that iteration moves back
+in the source and in the destination. (Parameters are never negative: a record is stored
+in a `FloatArray`, and a negative word has the bits of a NaN.) -/
+def bstk0Fn (R : Nat) (fwd : Bool) : KM Unit := do
+  let k := butterflyK fwd R false
+  let RP := padUp R
+  let sTail ← KM.slotParam 4
+  let sBackIn ← KM.slotParam 5
+  let sBackOut ← KM.slotParam 6
+  let o ← KM.param 1
+  KM.ins (.add o (.reg .rdi))
+  let s ← KM.param 2
+  let q ← KM.param 3
+  KM.give [.rdi, .rdx, .rcx]
+  let rin ← Rows.setup R .rsi s
+  let row := fun (r : Nat) (d : Int) => rin.mem r d
+  let lane := fun (m : Nat) (d : Int) => Mem.b o (16 * RP * m + d)
+  let lLoop ← KM.freshLabel
+  let lEnd ← KM.freshLabel
+  KM.ins (.align 16)
+  KM.ins (.label lLoop)
+  KM.block .z (spec := some (bstk0Spec k R row lane)) do
+    let mut inp : Array VId := #[]
+    for r in [0:R] do
+      let lo ← BlockM.load (row r 0)
+      let hi ← BlockM.load (row r 64)
+      let (re, im) ← deinterleave lo hi
+      inp := (inp.push re).push im
+    let outs ← instSplit k (inp[·]!)
+    for part in [0:2] do
+      for c in [0:RP / 8] do
+        let cols ← transposeS ((Array.range 8).map fun i => outs[2 * ((8 * c + i) % R) + part]!)
+        for p in [0:8] do
+          BlockM.store (lane sigma[p]! (128 * c + 64 * part)) cols[p]!
+  rin.advance (.imm 128)
+  KM.ins (.add o (.imm (128 * RP)))
+  KM.ins (.dec q)
+  KM.ins (.jcc .ne lLoop)
+  -- the last butterflies, once
+  KM.ins (.decMem sTail)
+  KM.ins (.jcc .ne lEnd)
+  rin.retreat (.mem sBackIn)
+  KM.ins (.sub o (.mem sBackOut))
+  KM.ins (.mov q (.imm 1))
+  KM.ins (.jmp lLoop)
+  KM.ins (.label lEnd)
+
+/-- A twiddled pass of the blocked Stockham schedule between two padded blocked arrays:
+block `b` reads the slots `b + k + r·(N/R)'` and writes `b·R + k + r·ns'` (`k < ns'`).
+
+Parameters: `1`, `2`: the source and the destination (byte offsets from the record);
+`3`: twiddles, in the order the loop reads them; `4`: `16·(N/R)'`; `5`: `16·ns'`;
+`6`: number of blocks `N/(R·ns)`; `7`: `ns'/8`; `8`: `16·ns'·(R−1)`. -/
+def bstkFn (R : Nat) (fwd : Bool) : KM Unit := do
+  let k := butterflyK fwd R true
+  let sNb ← KM.slotParam 6
+  let sNv ← KM.slotParam 7
+  let sSkip ← KM.slotParam 8
+  let sTw ← KM.gslot
+  KM.ins (.mov .rax (.mem (Mem.b .rdi 24)))
+  KM.ins (.add .rax (.reg .rdi))
+  KM.ins (.store sTw .rax)
+  let x ← KM.param 1
+  KM.ins (.add x (.reg .rdi))
+  let o ← KM.param 2
+  KM.ins (.add o (.reg .rdi))
+  let sIn ← KM.param 4
+  let sOut ← KM.param 5
+  KM.give [.rdi, .rsi, .rdx, .rcx]
+  let rin ← Rows.setup R x sIn
+  let rout ← Rows.setup R o sOut
+  let t ← KM.take
+  let q ← KM.take
+  let rowIn := fun (r : Nat) (d : Int) => rin.mem r d
+  let rowOut := fun (r : Nat) (d : Int) => rout.mem r d
+  let tw := fun (d : Int) => Mem.b t d
+  KM.repeatDownMem sNb do
+    KM.ins (.mov t (.mem sTw))
+    KM.ins (.mov q (.mem sNv))
+    KM.repeatDown q do
+      KM.block .z (spec := some (bstkSpec k R false rowIn rowOut tw))
+        (bstkBlock k R false rowIn rowOut tw)
+      rin.advance (.imm 128)
+      rout.advance (.imm 128)
+      KM.ins (.add t (.imm (128 * (R - 1))))
+    rout.advance (.mem sSkip)
+
+/-- The last pass of the blocked Stockham schedule: padded blocked source → interleaved
+`out`. The row of `ns` numbers is `ns/R₀` runs of `U = R₀'/8` vectors; a vector that ends a
+run holds `R₀ − 8(U−1)` numbers and pads. It is stored whole (the next run of the row then
+overwrites what the pads left), except the last vector of the rows, which is stored in the
+frame and copied number by number.
+
+Parameters: `1`: the source (byte offset from the record); `2`: twiddles; `3`: `16·ns'`
+(bytes between the rows of the source); `4`: `16·ns`; `5`: runs per row; `6`: `U`;
+`7`: vectors of the last run stored whole (`U − 1` with pads, else `U`); `8`: `16·(R₀'−R₀)`;
+`9`: numbers of the last vector (0 without pads: there is none). -/
+def bstkLastFn (R : Nat) (fwd : Bool) : KM Unit := do
+  let k := butterflyK fwd R true
+  let sQ ← KM.slotParam 5
+  let sU ← KM.slotParam 6
+  let sU1 ← KM.slotParam 7
+  let sPad ← KM.slotParam 8
+  let sC ← KM.slotParam 9
+  -- the buffer: `2R` vectors on a 64-byte boundary, after 8 integer slots
+  for _ in [0:3] do let _ ← KM.gslot
+  let tb0 ← KM.gslot
+  for _ in [1:16 * R] do let _ ← KM.gslot
+  let x ← KM.param 1
+  KM.ins (.add x (.reg .rdi))
+  let t ← KM.param 2
+  KM.ins (.add t (.reg .rdi))
+  let sIn ← KM.param 3
+  let sOut ← KM.param 4
+  KM.give [.rdi, .rsi, .rcx]
+  let rin ← Rows.setup R x sIn
+  let rout ← Rows.setup R .rdx sOut
+  let cv ← KM.take
+  let tb ← KM.take
+  KM.ins (.lea tb tb0)
+  let rowIn := fun (r : Nat) (d : Int) => rin.mem r d
+  let rowOut := fun (r : Nat) (d : Int) => rout.mem r d
+  let rowBuf := fun (r : Nat) (d : Int) => Mem.b tb (128 * r + d)
+  let tw := fun (d : Int) => Mem.b t d
+  let lRun ← KM.freshLabel
+  let lGo ← KM.freshLabel
+  let lFinal ← KM.freshLabel
+  let lEnd ← KM.freshLabel
+  KM.ins (.label lRun)
+  KM.ins (.mov cv (.mem sU))
+  KM.ins (.decMem sQ)
+  KM.ins (.jcc .ne lGo)
+  -- the last run
+  KM.ins (.mov cv (.mem sU1))
+  KM.ins (.test cv cv)
+  KM.ins (.jcc .e lFinal)
+  KM.ins (.label lGo)
+  KM.repeatDown cv do
+    KM.block .z (spec := some (bstkSpec k R true rowIn rowOut tw)) (bstkBlock k R true rowIn rowOut tw)
+    rin.advance (.imm 128)
+    rout.advance (.imm 128)
+    KM.ins (.add t (.imm (128 * (R - 1))))
+  KM.ins (.mov cv (.mem sQ))
+  KM.ins (.test cv cv)
+  KM.ins (.jcc .e lFinal)
+  rout.retreat (.mem sPad)
+  KM.ins (.jmp lRun)
+  KM.ins (.label lFinal)
+  KM.ins (.mov cv (.mem sC))
+  KM.ins (.test cv cv)
+  KM.ins (.jcc .e lEnd)
+  KM.block .z (spec := some (bstkSpec k R true rowIn rowBuf tw)) (bstkBlock k R true rowIn rowBuf tw)
+  for m in [0:8] do
+    if m > 0 then
+      KM.ins (.cmp cv (.imm m))
+      KM.ins (.jcc .be lEnd)
+    for r in [0:R] do
+      KM.ins (.vmov .x ⟨0⟩ (.mem (Mem.b tb (128 * r + 16 * m))))
+      KM.ins (.vstore .x (rout.mem r (16 * m)) ⟨0⟩)
+  KM.ins (.label lEnd)
+
 /-! ## Small transforms on interleaved data
 
 Whole transforms in registers, on vectors of `VLc` complex numbers (`VLc = 1`: `xmm`,
@@ -970,6 +1230,12 @@ def ctwoSet : List (Nat × Nat × Nat) :=
 /-- Radices of the Stockham passes. -/
 def stkRadices : List Nat := [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]
 
+/-- Radices of the first pass of the blocked Stockham schedule (the later passes have the
+radices `stkRadices`). At least 4: the pads of a run are fewer than its numbers. -/
+def bstk0Radices : List Nat :=
+  [5, 6, 7, 8, 12, 14, 15, 16, 20, 21, 22, 24, 25, 27, 28, 30, 32, 35, 36, 39, 40, 44, 45, 48,
+   54, 55, 56, 60, 63, 64]
+
 /-- The functions records can name, in table order. -/
 def registry : Array FnDef := Id.run do
   let mut r : Array FnDef := #[.raw "lfa_loop" loopFn, .raw "lfa_copyin" copyinFn,
@@ -988,6 +1254,10 @@ def registry : Array FnDef := Id.run do
     for R in stkRadices do
       r := r.push (.km (stk0Name R fwd) (stk0Fn R fwd))
       r := r.push (.km (stkName R fwd) (stkFn R fwd))
+    for R in bstk0Radices do r := r.push (.km (bstk0Name R fwd) (bstk0Fn R fwd))
+    for R in stkRadices do
+      r := r.push (.km (bstkName R fwd false) (bstkFn R fwd))
+      r := r.push (.km (bstkName R fwd true) (bstkLastFn R fwd))
   return r
 
 /-- Index of a function in `lfa_table`. -/

@@ -323,7 +323,7 @@ def stkMain (args : List String) : IO UInt32 := do
     for fwd in [true, false] do
       let base := baseTable N fwd
       for c in Planner.enumerate N do
-        if c.mode != .stockham then continue
+        if c.mode != .stockham && c.mode != .blocked then continue
         let some src := mkPlan N fwd c.rs c.mode 0 0 false base | continue
         let plan ← src.build true
         let x := randArr (2 * N) (N + 7)
@@ -341,7 +341,43 @@ def stkMain (args : List String) : IO UInt32 := do
   IO.println s!"Stockham plans: {n} runs, {bad} mismatches"
   return if bad == 0 then 0 else 1
 
+/-- `one MODE N R₀ R₁ …` (`MODE` = `stockham`, `blocked`): run one plan, forward and
+backward, out of place and in place, against the Lean reference; print its time. -/
+def oneMain (args : List String) : IO UInt32 := do
+  let mode := if args.head! == "blocked" then Mode.blocked else .stockham
+  let nums := args.tail.map String.toNat!
+  let N := nums[0]!
+  let rs := (nums.drop 1).toArray
+  let mut bad := 0
+  for fwd in [true, false] do
+    let base := baseTable N fwd
+    let some src := mkPlan N fwd rs mode 0 0 false base | IO.println "unsupported"; return 1
+    let plan ← src.build true
+    let x := randArr (2 * N) (N + 7)
+    let ref := refTransform fwd N rs x
+    for inplace in [false, true] do
+      let y := if inplace then randArr (2 * N) (N + 7) else zeros (2 * N + 24)
+      plan.run (if inplace then addr y else addr x) (addr y)
+      let y' : FloatArray := if inplace then y else ⟨y.data.extract 0 (2 * N)⟩
+      let clean := inplace || (y[2 * N]! == 0.0 && y[2 * N + 1]! == 0.0 && y[2 * N + 23]! == 0.0)
+      if (firstDiff y' ref).isSome || !clean then
+        bad := bad + 1
+        IO.println s!"MISMATCH N={N} fwd={fwd} rs={rs.toList} inplace={inplace} at {firstDiff y' ref} clean={clean}"
+    if fwd then
+      let inp := zeros (2 * N + 1024)
+      let out := zeros (2 * N + 2048)
+      let t ← timeNode src ((addr inp + 63) / 64 * 64) ((addr out + 63) / 64 * 64)
+      IO.println s!"{args}: {t} ns"
+      if (← IO.getEnv "LF_PROF").isSome then
+        if let .loop _ _ _ _ _ ch _ := src.root then
+          for i in [0:ch.size] do
+            let ti ← timeNode { src with root := .seq #[ch[i]!] } ((addr inp + 63) / 64 * 64) ((addr out + 63) / 64 * 64)
+            IO.println s!"  pass {i}: {ti} ns  {ti / N.toFloat} ns/elt"
+      if inp.size + out.size == 0 then return 1
+  return if bad == 0 then 0 else 1
+
 def main (args : List String) : IO UInt32 := do
+  if args.head? == some "one" then return ← oneMain args.tail
   if args.head? == some "stk" then return ← stkMain args.tail
   if args.head? == some "mutate" then return ← mutateMain ((args.getD 1 "1").toNat!)
   if args.head? == some "plan" then return ← planMain args.tail

@@ -321,6 +321,8 @@ inductive Mode where
   | inplace
   /-- Stockham passes on interleaved data (any radices) -/
   | stockham
+  /-- Stockham passes on padded blocked data -/
+  | blocked
   deriving DecidableEq, Repr, Inhabited
 
 /-- Plans of the whole-transform kernels. -/
@@ -341,7 +343,7 @@ def smallPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (mode : Mode) (inplace : B
         return { root := .kern (ctwoName rs[0]! rs[1]! vlc fwd) #[.blob 0], blobs := #[.space (16 * N)] }
       else
         return { root := .kern (ctwoName rs[0]! rs[1]! vlc fwd) #[.imm 0] }
-  | .inplace | .stockham => none
+  | .inplace | .stockham | .blocked => none
 
 /-! ## The Stockham schedule -/
 
@@ -396,6 +398,66 @@ def stockhamPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (base : FloatArray) : O
           .imm (16 * (ns % 8)), .imm (16 * ns * (R - 1)), .imm m0, .imm m1])
   return { root := .seq nodes, blobs }
 
+/-! ## The blocked Stockham schedule -/
+
+/-- Twiddles of a pass `(R, ns)` of the blocked Stockham schedule with first radix `R0`, in
+the order the loop reads them: for each vector `v` of 8 slots, for `r = 1 … R-1`: 8 real
+parts, 8 imaginary parts, lane `p` being slot `8v + σ p`; the slot `q·R0' + k` holds column
+`q·R0 + k` (zero in the pads `k ≥ R0`). Entry `(r, k)` is `ω_N^(r·k·N/(ns·R))`. -/
+def bstkTwiddles (base : FloatArray) (N R ns R0 : Nat) : FloatArray := Id.run do
+  let step := N / (ns * R)
+  let RP := padUp R0
+  let nv := ns / R0 * RP / 8
+  let mut t := FloatArray.emptyWithCapacity (16 * (R - 1) * nv)
+  for v in [0:nv] do
+    for r in [1:R] do
+      for part in [0:2] do
+        for p in [0:8] do
+          let slot := 8 * v + sigma[p]!
+          let k0 := slot % RP
+          t := t.push (if k0 < R0 then base[2 * (r * (slot / RP * R0 + k0) * step) + part]! else 0.0)
+  return t
+
+/-- The plan of the blocked Stockham schedule for the radices `rs` (at least two passes, at
+least 8 butterflies in the first). The first pass reads `in` and only the last writes `out`,
+so `in == out` is allowed. -/
+def blockedPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (base : FloatArray) : Option PlanSrc := do
+  let s := rs.size
+  guard (s ≥ 2)
+  let R0 := rs[0]!
+  guard (bstk0Radices.contains R0 && (rs.extract 1 s).all stkRadices.contains)
+  let nst : Array Nat := (Array.range (s + 1)).map fun t => passNs rs t
+  guard (nst[s]! == N)
+  let M := N / R0
+  guard (M ≥ 8)
+  let RP := padUp R0
+  -- slots of a multiple of `R0` numbers
+  let slots (n : Nat) : Nat := n / R0 * RP
+  let mut blobs : Array Blob := #[]
+  for _ in [0:min (s - 1) 2] do blobs := blobs.push (.space (16 * slots N))
+  let tl := M % 8
+  let mut nodes : Array PNode := #[.kern (bstk0Name R0 fwd)
+    #[.blob 0, .imm (16 * M), .imm (M / 8), .imm (if tl == 0 then 0 else 1),
+      .imm (16 * (8 - tl)), .imm (16 * RP * (8 - tl))]]
+  for t in [1:s] do
+    let R := rs[t]!
+    let ns := nst[t]!
+    let tw := blobs.size
+    blobs := blobs.push (.floats (bstkTwiddles base N R ns R0))
+    let src : PArg := .blob ((t - 1) % 2)
+    if t < s - 1 then
+      nodes := nodes.push (.kern (bstkName R fwd false)
+        #[src, .blob (t % 2), .blob tw, .imm (16 * slots (N / R)), .imm (16 * slots ns),
+          .imm (N / (R * ns)), .imm (slots ns / 8), .imm (16 * slots ns * (R - 1))])
+    else
+      let U := RP / 8
+      let padded := RP != R0
+      nodes := nodes.push (.kern (bstkName R fwd true)
+        #[src, .blob tw, .imm (16 * slots ns), .imm (16 * ns), .imm (ns / R0), .imm U,
+          .imm (if padded then U - 1 else U), .imm (16 * (RP - R0)),
+          .imm (if padded then R0 - 8 * (U - 1) else 0)])
+  return { root := .seq nodes, blobs }
+
 /-- The plan of a schedule. -/
 def mkPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (mode : Mode) (T Q : Nat) (inplace : Bool)
     (base : FloatArray) (par : Bool := false) (pf : Nat := 0) : Option PlanSrc :=
@@ -403,6 +465,7 @@ def mkPlan (N : Nat) (fwd : Bool) (rs : Array Nat) (mode : Mode) (T Q : Nat) (in
     (if leafPrefetch.contains pf then inplacePlan N fwd rs T Q inplace base par pf else none)
   else if pf != 0 then none
   else if mode == .stockham then (if T == 0 && Q == 0 && !par then stockhamPlan N fwd rs base else none)
+  else if mode == .blocked then (if T == 0 && Q == 0 && !par then blockedPlan N fwd rs base else none)
   else if T == 0 && Q == 0 && !par then smallPlan N fwd rs mode inplace else none
 
 end LeanFFTW.Asm

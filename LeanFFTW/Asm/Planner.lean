@@ -40,7 +40,9 @@ structure Cand where
 def firsts : Array Nat := #[2, 4, 8, 16, 32]
 def mids : Array Nat := #[32, 16, 8, 4, 2]
 /-- radices of the plans of sizes that are not powers of two -/
-def firstsM : Array Nat := #[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16]
+def firstsM : Array Nat :=
+  #[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16] ++
+    (bstk0Radices.filter fun R => !stkRadices.contains R).toArray
 def midsM : Array Nat := #[16, 15, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
 
 def isPow2 (N : Nat) : Bool := N &&& (N - 1) == 0
@@ -55,7 +57,9 @@ def modesOf (N : Nat) (rs : Array Nat) : List Mode :=
   (if two ctwoSet then [.ctwo] else []) ++
   (if rs.size ≥ 2 && leafRadices.contains rs[0]! && rs.all ditRadices.contains &&
       N / rs[0]! ≥ 8 then [.inplace] else []) ++
-  (if !isPow2 N && rs.all stkRadices.contains then [.stockham] else [])
+  (if !isPow2 N && rs.all stkRadices.contains then [.stockham] else []) ++
+  (if !isPow2 N && rs.size ≥ 2 && bstk0Radices.contains rs[0]! && N / rs[0]! ≥ 8 &&
+      (rs.extract 1 rs.size).all stkRadices.contains then [.blocked] else [])
 
 def emitAll (N : Nat) (rs : Array Nat) (acc : Array Cand) : Array Cand :=
   (modesOf N rs).foldl (fun acc mode => acc.push { rs, mode }) acc
@@ -148,6 +152,7 @@ def counts (tab : Std.HashMap (Nat × Bool) (Nat × Nat)) (N : Nat) (c : Cand) :
 def modeTag : Mode → String
   | .csmall => "csmall" | .cfused => "cfused" | .ctwo => "ctwo" | .inplace => "inplace"
   | .stockham => "stockham"
+  | .blocked => "blocked"
 
 /-- Optional log of every measured candidate (`LF_PLAN_LOG=<file>`). -/
 def logCands (N : Nat) (fwd : Bool) (stage : String) (cs : Array Cand) : IO Unit := do
@@ -188,7 +193,7 @@ def raceOrder (N : Nat) (fwd : Bool) (cs : Array Cand) : Array Cand := Id.run do
   let tab := bflyTable fwd cs
   let scored := cs.map fun c => (c, opScore tab N c)
   let key (c : Cand) : Nat := match c.mode with
-    | .csmall => 0 | .cfused => 1 | .ctwo => 2 | .inplace => 3 | .stockham => 4
+    | .csmall => 0 | .cfused => 1 | .ctwo => 2 | .inplace => 3 | .stockham => 4 | .blocked => 4
   let mut best : Std.HashMap Nat Float := {}
   for (c, x) in scored do
     if x < best.getD (key c) 1e300 then best := best.insert (key c) x
