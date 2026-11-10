@@ -139,9 +139,9 @@ theorem ipLeaf_getD (A : Arith α) (k : Kernel) {N R : ℕ} (L : List ℕ) (hR :
     show (2 * (P * R + kk) + p) % 2 = p by omega, e1, e2]
   rw [getD_map_range _ _ _ (by omega)]
 
-/-- **What the C leaf pass does.** Leaf `d` of the in-place schedule writes the outputs of the
+/-- **What the leaf pass of the engine does.** Leaf `d` of the in-place schedule writes the outputs of the
 DFT of `x[d + i·N/R]` at positions `leafOffsets[d] + r = digitRev L d · R + r`: the scatter
-that the C executor performs with the table `leafOffsets`, read off the gather form of
+that the executor performs with the table `leafOffsets`, read off the gather form of
 `ipLeaf`. -/
 theorem ipLeaf_scatter (A : Arith α) (k : Kernel) {N R : ℕ} (L : List ℕ) (hR : 0 < R)
     (hL : ∀ R ∈ L, 0 < R) (hN : N = L.prod * R) (x : Array α) {d r p : ℕ} (hd : d < L.prod)

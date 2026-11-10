@@ -284,7 +284,7 @@ def planMeasure (N : Nat) (fwd : Bool) (inp out : USize) (effort : Effort) :
     if ts[i]! < ts[b]! then b := i
   return some (ps[b]!, { keep[b]! with t := ts[b]! })
 
-/-! ## C entry points -/
+/-! ## Entry points for callers outside Lean (the benchmark adapter) -/
 
 /-- Plan a transform of size `N` on the caller's arrays (`inp == out`: in place); their
 contents are overwritten. Returns the plan's memory (run it with

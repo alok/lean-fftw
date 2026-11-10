@@ -11,7 +11,7 @@ A fast plan of size `N = R₀ ⋯ R_{s-1}` runs `s` passes; pass `t` has
 `ω_{ns·R}^{r·k} = ω_N^{r·k·N/(ns·R)}`, `ω_n = exp (∓2πi/n)`.
 
 All twiddles of a plan are read from the single table `m ↦ cosSin2Pi m N`
-(`Trig.cosSin2PiTable`), so the C engine and the Lean reference use identical values.
+(`Trig.cosSin2PiTable`), so the assembly engine and the Lean reference use identical values.
 Pass `t ≥ 1` stores, for `1 ≤ r < R`, the `ns` real parts of its twiddles followed by
 the `ns` imaginary parts; pass 0 needs none (`k = 0`).
 -/
@@ -44,31 +44,6 @@ def planTwiddles (fwd : Bool) (N : Nat) (rs : Array Nat) : FloatArray := Id.run 
     let tw := passTwiddles tab fwd N (rs.getD t 1) (passNs rs t)
     for i in [0:tw.size] do
       out := out.push tw[i]!
-  return out
-
-/-- Decode `[N, fwd, s, R₀, …, R_{s-1}]` (small integers, exact in binary64). -/
-def decodeFastSpec (spec : FloatArray) : Nat × Bool × Array Nat :=
-  let nat (i : Nat) : Nat := (spec.get! i).toUInt64.toNat
-  let s := nat 2
-  (nat 0, nat 1 == 1, (Array.range s).map fun i => nat (3 + i))
-
-/-- C entry point: the twiddle tables of a fast plan. -/
-@[export lfftw_fast_twiddles]
-def fastTwiddlesFFI (spec : FloatArray) : FloatArray :=
-  let (N, fwd, rs) := decodeFastSpec spec
-  planTwiddles fwd N rs
-
-/-- C entry point: the base table `ω_N^m`, `m < N`, interleaved `(re, im)`, for
-`spec = [N, fwd]`; pass tables are gathered from it (entry `(r, k)` of pass `(R, ns)` is
-entry `r·k·N/(ns·R)`), exactly as `passTwiddles` does. -/
-@[export lfftw_fast_base_table]
-def fastBaseTableFFI (spec : FloatArray) : FloatArray := Id.run do
-  let N := (spec.get! 0).toUInt64.toNat
-  let fwd := (spec.get! 1).toUInt64.toNat == 1
-  let tab := Trig.cosSin2PiTable N
-  let mut out := FloatArray.emptyWithCapacity (2 * N)
-  for (c, s) in tab do
-    out := (out.push c).push (if fwd then Trig.negZ s else s)
   return out
 
 end LeanFFTW

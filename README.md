@@ -35,7 +35,9 @@ source of the test harness; Lean FFTW never links or calls it.
   rank, vector rank and strides, in and out of place, split or interleaved. That covers
   all 50,702 problems of FFTW's exhaustive bigcheck enumeration (`check.pl -a`). See
   [docs/FFTW_INVENTORY.md](docs/FFTW_INVENTORY.md) for everything FFTW has and what is not
-  covered (other precisions, threads, MPI, wisdom, the `fftw3.h` C API).
+  covered (other precisions, threads, MPI, wisdom, the `fftw3.h` C API). The full enumeration
+  was last run with the C engine; it has not yet been rerun on the assembly engine, which
+  passes `--verify` on the 29 problems tried.
 * **Proofs.** No `sorry`, no new axioms ([scripts/Axioms.lean](scripts/Axioms.lean)):
   * the spec agrees with Mathlib's `ZMod.dft`;
   * the generated butterfly kernels and the Stockham schedule compute the DFT exactly;
@@ -46,6 +48,8 @@ source of the test harness; Lean FFTW never links or calls it.
     0.945 ulp ([docs/REPRODUCTION.md](docs/REPRODUCTION.md));
   * the in-place schedule the fast engine runs equals the Stockham schedule for every
     arithmetic, and the Lean-compiled backend equals the binary64 reference;
+  * the checker that accepts every block of emitted vector code is sound: an accepted block
+    computes its specification on every machine state (`check_sound`);
   * the planner's operation counts are the query costs of a CSLib program that is also
     proved to compute the DFT;
   * optimizations are proved too: the generator's rewrites (FMA contraction,
@@ -56,17 +60,39 @@ source of the test harness; Lean FFTW never links or calls it.
 
   Details: [docs/THEOREMS.md](docs/THEOREMS.md).
 
-## Lean drives the generator, the planner and a Lean-compiled backend
+## No C in the library: Lean writes the machine code
 
-Hand-written, the library is about 8,500 lines of Lean to 600 of C. The C that remains is
-the executor loops and FFI glue; the 193,000 lines of SIMD kernels are printed by the Lean
-generator. Lean also does the planning, with its search ordered and pruned by operation
-counts that are proved through a CSLib query program. It holds the address tables of the
-in-place schedule, which is proved equal to the Stockham schedule. And it can run the whole
-transform itself: `LeanFFTW.Native` compiles the same generated kernels as Lean code over
-unboxed `FloatArray`, is proved to compute `refTransform`, and takes 1.6–2.9× the time
-of the SIMD C engine from N = 1024 up. [docs/LEAN_DRIVEN.md](docs/LEAN_DRIVEN.md) has the
-measurements, what the compiler reports led to, and what did not work.
+Since 2026-11-10 the library contains no C. The fast engine is x86-64 AVX-512 assembly that
+Lean writes itself (`LeanFFTW/Asm`): an instruction DSL, a vectorizer and a register
+allocator in Lean produce GNU assembler text, and `as` is the only external tool between
+Lean and the machine code. Planning, twiddle tables, address tables and the executor's
+plan tree are Lean as well. The earlier engine (600 lines of hand-written C around 193,000
+lines of C kernels printed by Lean, compiled by gcc) was removed once the assembly engine was
+at least as fast at every size measured; it is in the history up to commit `7cc9489`.
+
+Nothing in the vectorizer, scheduler or register allocator is trusted. Every block of vector
+code they emit is checked against a specification derived from the proved kernels, by a
+checker whose soundness is a theorem (`check_sound`): an accepted block computes its
+specification on every machine state, in exact arithmetic and in binary64. The generator
+refuses to write a block that fails. This has already paid for itself: the checker caught a
+register-allocator bug (a spill slot released one instruction early) that no test had hit.
+
+The code is about 12,700 lines of hand-written Lean. The only C left in the repository is
+the 626-line adapter that plugs the library into FFTW's benchmark and test program
+(`bench/backends`). For comparison, FFTW's generator is OCaml and its runtime is C, at
+roughly 1 line of OCaml to 5 of hand-written C.
+
+`LeanFFTW.Native` is a second backend, compiled by Lean's own compiler over unboxed
+`FloatArray`, proved to compute `refTransform`; it is 1.6–2.9× slower than SIMD code from
+N = 1024 up ([docs/LEAN_DRIVEN.md](docs/LEAN_DRIVEN.md)).
+
+**Speed of the assembly engine.** The protocol figures under Results were measured with the
+C engine. Quick measurements of the assembly engine on Emerald Rapids (one core, FFTW in
+patient mode, not yet the full protocol): geometric mean about 0.78× FFTW's time over the
+powers of two, with FFTW still 3–7% ahead at N = 256, 512 and 2^17; 0.49–0.91× for the
+composite sizes from 18 to 240; between 0.65× and 1.19× for larger sizes that are not powers
+of two, except N = 50000 at 1.40×. At every size measured it is at least as fast as the C
+engine it replaced. A protocol run with confidence intervals is still to come.
 
 ## How the pieces fit
 
@@ -75,10 +101,12 @@ Lean spec (dftSum = Mathlib ZMod.dft)
    │ proved
 Lean codelet generator ── butterflyK kernels ── Stockham schedule (stockhamWith)
    │ proved: exact DFT; binary64 error bound for refTransform
-   │ prints
-SIMD C kernels + C executor (fast engine, 1-D complex, prime factors ≤ 13)
-   │ tested bit for bit against refTransform (3,726 + 6,496 plans,
-   │ and the plan the planner picks at each benchmark size)
+   │ instantiated lane by lane as the specification of every vector block
+Lean vectorizer, scheduler, register allocator ── AVX-512 instructions
+   │ each block checked by a checker proved sound (check_sound)
+   │ printed as assembler text, assembled by `as`
+assembly engine (1-D complex, prime factors ≤ 13), plans built and run from Lean
+   │ tested bit for bit against refTransform
 libbench2 / check.pl (FFTW's harness)
 ```
 
@@ -92,13 +120,13 @@ analysed. [docs/TRUST.md](docs/TRUST.md) lists every link and how it is establis
 | Path | Contents |
 |---|---|
 | `LeanFFTW/Spec` | the DFT specification |
-| `LeanFFTW/Gen` | codelet generator (symbolic DFT, simplifier, CSE, vectorizer, C printer) |
+| `LeanFFTW/Gen` | codelet generator (symbolic DFT, simplifier, CSE, operation counts) |
+| `LeanFFTW/Asm` | the assembly engine: instruction DSL, vector IR, register allocator, checker and its soundness proof, kernels and schedules, plans, planner |
 | `LeanFFTW/Core` | generic engine (mixed radix, r2c/c2r, r2r, guru problems), twiddles |
-| `LeanFFTW/Plan` | the planner (search, pruning by proved counts, measurement) |
 | `LeanFFTW/Native` | the Lean-compiled backend (generated kernels, executor, unsafe primitives) |
 | `LeanFFTW/Proof` | correctness and floating-point proofs |
-| `csrc` | fast engine executor, generated kernels, Lean glue, differential test |
-| `bench/backends` | libbench2 backends (Lean FFTW, MKL) |
+| `scripts` | build script, the assembly writer (`gen_asm`), tests (`asm_test`), axiom audit |
+| `bench/backends` | libbench2 adapters (Lean FFTW, MKL): the only C in the repository |
 | `tools` | protocol runner and analysis, accuracy, bigcheck, GIF |
 | `results` | raw and analysed benchmark data |
 | `docs` | contract, FFTW inventory, protocol, iteration log, results, theorems, trust |
@@ -106,22 +134,25 @@ analysed. [docs/TRUST.md](docs/TRUST.md) lists every link and how it is establis
 ## Building
 
 Requirements: Lean 4.35.0 (`lean-toolchain`), the Mathlib, CSLib and FloatLib revisions in
-`lake-manifest.json`, gcc, and an x86-64 CPU with AVX-512 (F and VL) for the fast engine.
+`lake-manifest.json`, GNU `as`, and an x86-64 CPU with AVX-512 (F, DQ and VL) for the fast
+engine. A C compiler is needed only by Lean's own tool chain and for the benchmark adapter.
 
 ```sh
 lake build                                   # library and proofs
 lake env lean scripts/Axioms.lean            # axiom audit
 LEAN=<lean-4.35.0 dir> OUT=build FFTW_SRC=<fftw-3.3.10 tree> scripts/build.sh
-ulimit -s unlimited; build/test_fast 14 18   # bit-exact differential test, powers of two
-build/test_fast mixed 300                    # the same for 13-smooth sizes
+build/asm_test 12                            # every plan of the powers of two, bit for bit
+build/asm_test small                         # direct and two-pass kernels
+build/asm_test stk 120                       # Stockham and blocked schedules, mixed radices
+build/asm_test mixed 2 1000 4725 50000       # the planner's choice at every 13-smooth size
 build/bench-lean -s ocf1024                  # libbench2 speed run
 lake build native_bench && .lake/build/bin/native_bench check 12   # Lean backend, bit-exact
 ```
 
-`FFTW_SRC` is only needed for libbench2 (`libbench2.a`), FFTW's benchmark harness; leave it
-unset to build only the library and the test. The generated kernels
-(`csrc/lf_kernels_gen.c`) are committed; `lake env lean --run scripts/GenKernels.lean
-csrc/lf_kernels_gen.c` regenerates them. The protocol runner is `tools/bench.py`
+`scripts/build.sh` runs `gen_asm`, which generates the engine (about 3 MB of code), checks
+every block and writes the assembler file; nothing generated is committed. `FFTW_SRC` is
+only needed for libbench2 (`libbench2.a`), FFTW's benchmark harness; leave it unset to build
+only the library and its tests. The protocol runner is `tools/bench.py`
 ([docs/BENCHMARK_PROTOCOL.md](docs/BENCHMARK_PROTOCOL.md)).
 
 ## License

@@ -9,7 +9,7 @@ import LeanFFTW.Gen.Emit
 `cse_correct`: evaluating the kernel `cse nIn outs` on inputs `inp` (over any `Arith`
 whose commutative operations are commutative) gives exactly the values of the expressions
 `outs`. Together with the symbolic correctness of the butterflies this shows that the
-kernels the C code is printed from compute DFTs in exact arithmetic.
+kernels the vector code is instantiated from compute DFTs in exact arithmetic.
 -/
 
 namespace LeanFFTW.Gen

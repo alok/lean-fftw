@@ -1,5 +1,10 @@
 # Results
 
+> **Historical up to here.** The iterations and runs below used the C engine (`csrc/`,
+> `tools/c/`), which was removed on 2026-11-10 in favour of assembly written by Lean
+> (`LeanFFTW/Asm`). Those files are in the history up to commit `7cc9489`; the current state
+> is in [TRUST.md](TRUST.md) and the README.
+
 Three runs of the predeclared protocol ([BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md))
 are reported. The machine is a cloud VM whose CPU changed when the container was
 re-provisioned (amendments 1, 3 and 4), so each run re-measures every iteration and every

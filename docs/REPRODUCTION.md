@@ -1,5 +1,10 @@
 # Independent reproduction (2026-11-04)
 
+> **Historical.** This document describes the library as of the date in its title, when
+> the fast engine was C printed by Lean (`csrc/`, `tools/c/`). That engine was removed on
+> 2026-11-10 in favour of assembly written by Lean (`LeanFFTW/Asm`); the files named here
+> are in the history up to commit `7cc9489`. See [TRUST.md](TRUST.md) for the current state.
+
 The claims in the README were re-checked from scratch on a fresh machine of the same CPU
 model, with a separately built FFTW, and with a second benchmark harness that shares no
 code with libbench2. The data is in

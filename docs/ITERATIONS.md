@@ -1,5 +1,10 @@
 # Optimization iterations
 
+> **Historical up to here.** The iterations and runs below used the C engine (`csrc/`,
+> `tools/c/`), which was removed on 2026-11-10 in favour of assembly written by Lean
+> (`LeanFFTW/Asm`). Those files are in the history up to commit `7cc9489`; the current state
+> is in [TRUST.md](TRUST.md) and the README.
+
 Every iteration is a commit. Each one passes the bit-exact differential test of every
 enumerated plan against the Lean reference (`csrc/test_fast.c`) and libbench2 `--verify`.
 The kernel correctness theorem (`butterflyK_correct`) is re-checked for every iteration.

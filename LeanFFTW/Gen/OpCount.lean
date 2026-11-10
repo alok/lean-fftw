@@ -12,7 +12,7 @@ butterfly output, each weighted by a `Weights` record.
 
 These functions run inside the planner (no Mathlib). `LeanFFTW/Proof/Cost.lean` writes the
 same schedule as a CSLib query program (`Cslib.FreeM`) whose evaluation is
-`stockhamWith`, the function the C engine is tested against bit for bit, and proves that
+`stockhamWith`, the function the assembly engine is tested against bit for bit, and proves that
 the program's query cost `Cslib.FreeM.cost` is `stockhamCost`, for every oracle. So the
 numbers here are the operation counts of the executed algorithm, not annotations.
 -/

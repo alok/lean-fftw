@@ -22,17 +22,17 @@ require mathlib from git
 lean_lib LeanFFTW where
   roots := #[`LeanFFTW]
 
-/-- The executable engine (no Mathlib dependency), packaged as a static library for C. -/
+/-- The executable engine (no Mathlib dependency), packaged as a static library. -/
 lean_lib LeanFFTWExec where
   roots := #[`LeanFFTW.FFI]
   globs := #[.one `LeanFFTW.FFI, .submodules `LeanFFTW.Core, .submodules `LeanFFTW.Gen,
-    .submodules `LeanFFTW.Plan, .submodules `LeanFFTW.Asm]
+    .submodules `LeanFFTW.Asm]
 
 /-- The Lean-compiled backend: generated kernels over unboxed `FloatArray`. -/
 lean_lib LeanFFTWNative where
   roots := #[`LeanFFTW.Native.Exec]
   globs := #[.submodules `LeanFFTW.Native]
-  -- the C engine's flags: FMA instructions for `Float.fma`, no contraction of other operations;
+  -- FMA instructions for `Float.fma`, no contraction of other operations;
   -- and enough runtime alias checks for clang to vectorize the loops over butterflies
   moreLeancArgs := #["-march=native", "-mprefer-vector-width=512", "-ffp-contract=off",
     "-mllvm", "-runtime-memory-check-threshold=8192",

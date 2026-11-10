@@ -1272,7 +1272,7 @@ theorem bflySym_spec (env : ℕ → ℝ) (fwd : Bool) {R : ℕ} (hR : 0 < R) (tw
       exact dftSum_congr (fun j hj => (bflyIn_spec env R twiddled hj).1) k
 
 /-- **The generated butterfly kernels are correct.** Over exact real arithmetic, the kernel
-that the C code of a radix-`R` butterfly is printed from maps the input variables `v` to the
+that the vector code of a radix-`R` butterfly is instantiated from maps the input variables `v` to the
 real and imaginary parts of the length-`R` DFT (sign `fwd`) of the twiddled inputs
 `bflyX R twiddled v`. -/
 theorem butterflyK_correct (fwd : Bool) {R : ℕ} (hR : 0 < R) (twiddled : Bool)

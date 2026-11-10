@@ -82,17 +82,10 @@ def inplaceWith {α : Type} [Inhabited α] (A : Arith α) (fwd : Bool) (N : Nat)
       (some (twOf (u + 1))) y) y
 
 /-- Leaf offsets of the in-place schedule: leaf `d` (`d < N/R₀`) writes its outputs at
-positions `digitRev (R₁ … R_{s-1}) d · R₀ + r`. The C executor reads this table. -/
+positions `digitRev (R₁ … R_{s-1}) d · R₀ + r`. -/
 def leafOffsets (N : Nat) (rs : Array Nat) : Array Nat :=
   let R0 := rs.getD 0 1
   let L := rs.toList.drop 1
   (Array.range (N / R0)).map fun d => digitRev L d * R0
-
-/-- C entry point: `spec = [N, s, R₀, …, R_{s-1}]`; the leaf offsets as doubles (exact). -/
-@[export lfftw_leaf_offsets]
-def leafOffsetsFFI (spec : FloatArray) : FloatArray :=
-  let nat (i : Nat) : Nat := (spec.get! i).toUInt64.toNat
-  let rs := (Array.range (nat 1)).map fun i => nat (2 + i)
-  ⟨(leafOffsets (nat 0) rs).map (·.toFloat)⟩
 
 end LeanFFTW.Gen

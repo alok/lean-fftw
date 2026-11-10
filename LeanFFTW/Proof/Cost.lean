@@ -17,7 +17,7 @@ load, a store. CSLib gives the program two meanings, by its two interpreters:
 
 We prove
 
-* `eval_stockhamQ`: the evaluation is `stockhamWith`, the schedule that the C engine is
+* `eval_stockhamQ`: the evaluation is `stockhamWith`, the schedule that the assembly engine is
   tested against bit for bit and that `stockhamWith_exact` proves computes the DFT;
 * `cost_stockhamQ`: for **every** oracle (every arithmetic, every data), the cost is
   `stockhamCost W fwd N rs`, the executable count that the planner uses
@@ -197,7 +197,7 @@ theorem eval_passesQ (fwd : Bool) (N : Nat) (rs : Array Nat) (twOf : Nat → Arr
     exact eval_passesQ fwd N rs twOf ts _
 
 /-- **The query program computes the fast engine's schedule.** Answered by an arithmetic
-`A`, `stockhamQ` returns `stockhamWith A`: over binary64 this is the reference the C engine
+`A`, `stockhamQ` returns `stockhamWith A`: over binary64 this is the reference the assembly engine
 matches bit for bit, over exact reals it is the DFT (`stockhamWith_exact`). -/
 theorem eval_stockhamQ (fwd : Bool) (N : Nat) (rs : Array Nat) (twOf : Nat → Array α)
     (z : Array α) :

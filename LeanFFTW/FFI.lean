@@ -4,14 +4,13 @@ Copyright (c) 2026 Lean FFTW contributors. Released under MIT license.
 import LeanFFTW.Core.Problem
 import LeanFFTW.Core.FastPlan
 import LeanFFTW.Gen.Stockham
-import LeanFFTW.Plan.Planner
 import LeanFFTW.Gen.InPlace
 import LeanFFTW.Asm.Planner
 
 /-!
-# C entry points of the generic engine
+# Entry points of the generic engine for the benchmark adapter
 
-Problems arrive from C encoded as a `FloatArray` of small integers (exact in binary64):
+Problems arrive from the adapter (`bench/backends`) encoded as a `FloatArray` of small integers (exact in binary64):
 
 ```
 [kind, sign, rank, vrank, inRe, inIm, outRe, outIm,
@@ -53,7 +52,7 @@ def planFFI (spec : FloatArray) : Option ProblemPlan :=
   (decode spec).bind planProblem
 
 /-- Execute a plan, reading `inp` and returning `out` with the output entries written.
-All arguments are owned (the C caller passes references it has incremented). -/
+All arguments are owned (the caller passes references it has incremented). -/
 @[export lfftw_generic_exec]
 def execFFI (pp : ProblemPlan) (inp : FloatArray) (out : FloatArray) : FloatArray :=
   execProblem pp inp out

@@ -376,7 +376,55 @@ def oneMain (args : List String) : IO UInt32 := do
       if inp.size + out.size == 0 then return 1
   return if bad == 0 then 0 else 1
 
+/-- `mixed lo hi [N …]`: for every `N` in `lo … hi` whose prime factors are at most 13, and
+for the sizes listed after, plan in both directions and both placements and check the chosen
+plan bit for bit against the reference transform with the same radices. -/
+def mixedMain (args : List String) : IO UInt32 := do
+  let nums := args.map String.toNat!
+  let smooth (n : Nat) : Bool := Id.run do
+    let mut m := n
+    for p in [2, 3, 5, 7, 11, 13] do
+      for _ in [0:64] do
+        if m % p == 0 then m := m / p
+    return m == 1
+  let sizes := ((List.range (nums[1]! + 1)).filter fun n => n ≥ nums[0]! && n ≥ 2 && smooth n)
+    ++ nums.drop 2
+  let mut bad := 0
+  let mut n := 0
+  for N in sizes do
+    for fwd in [true, false] do
+      for inplace in [false, true] do
+        let inp := zeros (2 * N + 8)
+        let out := zeros (2 * N + 16)
+        let ia := (addr inp + 63) / 64 * 64
+        let oa := if inplace then ia else (addr out + 63) / 64 * 64
+        let some (plan, c) ← Planner.planMeasure N fwd ia oa (← Planner.effortFromEnv)
+          | IO.println s!"N={N} fwd={fwd} inplace={inplace}: no plan"; bad := bad + 1
+        let x := randArr (2 * N) (N + 1)
+        let ref := refTransform fwd N c.rs x
+        let y := if inplace then randArr (2 * N) (N + 1) else zeros (2 * N)
+        plan.run (if inplace then addr y else addr x) (addr y)
+        n := n + 1
+        if (firstDiff y ref).isSome then
+          bad := bad + 1
+          IO.println s!"N={N} fwd={fwd} inplace={inplace} {Planner.modeTag c.mode} {c.rs.toList}: MISMATCH"
+        if inp.size + out.size + x.size == 0 then return 1
+  IO.println s!"{sizes.length} sizes, {n} plans checked, {bad} failures"
+  return if bad == 0 then 0 else 1
+
+/-- `twdump N …`: the twiddle base table of each `N`, both directions, as the bits of its
+doubles (`N fwd m re im`), for `tools/twcheck.py`. -/
+def twdumpMain (args : List String) : IO UInt32 := do
+  for N in args.map String.toNat! do
+    for fwd in [true, false] do
+      let b := baseTable N fwd
+      for m in [0:N] do
+        IO.println s!"{N} {if fwd then 1 else 0} {m} {(b.get! (2 * m)).toBits} {(b.get! (2 * m + 1)).toBits}"
+  return 0
+
 def main (args : List String) : IO UInt32 := do
+  if args.head? == some "twdump" then return ← twdumpMain args.tail
+  if args.head? == some "mixed" then return ← mixedMain args.tail
   if args.head? == some "one" then return ← oneMain args.tail
   if args.head? == some "stk" then return ← stkMain args.tail
   if args.head? == some "mutate" then return ← mutateMain ((args.getD 1 "1").toNat!)

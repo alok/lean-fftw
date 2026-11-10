@@ -15,69 +15,88 @@ This is the path every benchmark size takes, primary and secondary.
 | 4 | `refTransform` (Lean `Float`) | the exact DFT, within an explicit bound | **proved** (`refTransform_error`, `refTransform_error_depth`), under the stated hypotheses (finite values, constant accuracy κ, twiddle accuracy τ) |
 | 5 | Lean `Float` semantics | IEEE binary64 round-to-nearest-even | **proved** on the Lean side: Lean 4.35 defines `Float` operations through `Float.Model`, and `floatArith_stdModel` reads them through FloatLib's binary64 model |
 | 6 | compiled `Float` code | Lean's `Float` definitions | **trusted**: Lean compiles `Float` operations to C `double` via `@[extern]`; this relies on the C compiler and the CPU implementing IEEE binary64 |
-| 7 | the C fast engine (`csrc/`, generated `lf_kernels_gen.c`) | `refTransform` with the same radices | **tested bit for bit** (below) |
+| 7 | each block of vector code in the assembly engine (`LeanFFTW/Asm`) | its specification: the kernel of links 2–4, instantiated lane by lane | **checked by a checker proved sound** (`check_sound`), for 1,398 of 1,454 blocks; the other 56 (masked blocks) are tested only |
+| 8 | the assembly engine as a whole | `refTransform` with the same radices | **tested bit for bit** (below) |
 
-Link 7 is the trust boundary. The C kernels are printed by the Lean generator from the
-same `Kernel` values that links 2–4 are about, with every rounding operation written out
-explicitly. The code is compiled with `-ffp-contract=off`, so the compiler adds no fused
-operations, and the only FMAs are the ones in the kernel. The C engine reorders memory
-traffic (in-place, blocked, fused and two-pass schedules), but each butterfly performs
-the same operations on the same values as `refTransform`. That is why its output is
-expected to be, and is tested to be, **identical bit for bit**.
+The library contains no C. The engine is AVX-512 assembly written by Lean, and Lean also
+builds and runs the plans. (Until commit `7cc9489` the engine was C printed by Lean and
+compiled by gcc, tested bit for bit but with nothing checked below the kernel. It was removed
+on 2026-11-10.)
 
-`csrc/test_fast.c` checks link 7. It runs every plan the planner can enumerate for every
-N = 2^k from 1 to 2^14, both directions, in place and out of place, and compares each
-output with `refTransform` (called through the Lean FFI) using `memcmp`. For N = 2^15 to
-2^18 it checks the cache-blocked plans: three plans spread over the enumeration, for each
-block parameter, in both directions and both placements (`test_fast 14 18`: 3,726 plans,
-0 failures, recorded per iteration in [ITERATIONS.md](ITERATIONS.md)). `test_fast mixed
-MAXN [sizes…]` does the same for every 13-smooth size that is not a power of two up to
-MAXN and for the listed sizes: every plan the planner can enumerate, both directions,
-`memcmp` against `refTransform` with the same radices.
+### Link 7: translation validation of the emitted code
 
-What the printing adds on top of the proved kernels, and what these tests therefore have
-to catch, is: the SIMD instructions for each kernel operation (one lane per butterfly,
-or for the whole-transform kernels of sizes up to 64 one complex number per 128-bit
-vector with `fmaddsub`-style pairs); the deinterleaving and transposition shuffles; and,
-for sizes whose butterfly count is not a multiple of the vector length, one extra loop
-iteration with masked loads and stores (inactive lanes are loaded as zero and never
-stored). Every lane computes the same operations as the scalar kernel, so the masked
-iteration is bit-identical too, and the tests include sizes where it runs in every pass. libbench2
-`--verify` additionally checks the plan the planner actually picks, for N = 1 to 2^18.
-`tools/c/xcheck.c` checks that plan **bit for bit** against `refTransform` with the
-radices the planner chose, in and out of place, on random inputs. It ran at all 36
-benchmark sizes, three times, with 0 mismatches ([REPRODUCTION.md](REPRODUCTION.md)).
-A test is evidence for the inputs it runs,
-not a proof for all inputs, and that is the remaining gap between the proofs and the
-running code.
+The vectorizer, the scheduler of each block and the register allocator are ordinary
+unverified Lean programs. What makes their output trustworthy is that it is checked:
 
-Also trusted as is: the twiddle tables. They are computed by Lean (`Trig.cosSin2PiTable`)
-and passed to C, so C and `refTransform` use the same values. Their accuracy (τ) is a
-hypothesis of the error theorems, not proved. It is measured at 0.502 ulp
-(`tools/c/twcheck.c`), and the kernel constants (κ) at 0.945 ulp (`tools/kappa.py`).
+* For each block the generator states a `Spec`: for every memory operand the block stores,
+  the scalar each lane must hold, as a straight-line program over the words of the initial
+  memory. The specifications are the proved kernels (`butterflyK` and its relatives)
+  instantiated once per lane, plus the layout (which complex number sits in which lane).
+* `check` runs the emitted instructions symbolically, including the loads, the
+  deinterleaving and transposition shuffles, the spills and the stores, and accepts only if
+  every stored lane is the required value. `gen_asm` refuses to write an engine with a
+  rejected block.
+* `check_sound` (`Asm/Sound.lean`, no `sorry`, standard axioms) proves that an accepted
+  block, run in the instruction model of `Asm/Sem.lean` from any machine state, leaves the
+  specified value in every specified lane. It holds for every lawful arithmetic, so for
+  binary64 with the same rounding at every operation: an accepted block is bit-identical to
+  the kernel, not merely close. Its memory hypotheses (`Sep`) are that distinct operands
+  written by a block do not overlap and that spill slots and constants do not overlap the
+  data; reads may overlap writes, as in an in-place transform.
 
-### What is Lean and what is C in the fast engine
+The checker has caught a real bug: the register allocator released a dying value's spill
+slot one instruction early, in the size-35 kernel. No test had failed.
 
-* **Planning** is Lean (`LeanFFTW/Plan/Planner.lean`): candidate enumeration, the order and
-  pruning of the search by the proved operation counts, measurement, and the choice. The C
-  side only builds and runs the plan it is handed. A planning mistake can make a transform
-  slow, not wrong: up to 2^14 every plan the planner can enumerate is in the bit-exact test
-  set, and above that the blocked plans are sampled and the chosen plan is checked by `xcheck`.
-* **The in-place executor's address table** (`leafOffsets`, the digit reversal) is computed
-  by Lean and read by C (`lf_leaf_offsets`); `ipLeaf_scatter` is about that function.
-* `test_fast` needs `ulimit -s unlimited` for the blocked checks at N ≥ 2^15 (the test
-  allocates its reference buffers on the stack; this predates these changes).
+What link 7 does **not** cover, and link 8 has to:
+
+* the 56 masked blocks (tail iterations with masked loads and stores), which have no
+  specification yet;
+* the layout part of each specification (that lane `q` of operand `m` is the right complex
+  number) and the `Sep` hypotheses for the addresses the engine actually uses;
+* everything outside the vector blocks: loop counters and pointer arithmetic, the plan tree
+  and its parameters, twiddle and address tables, the thread pool;
+* the instruction model against the real CPU, the printer from instructions to assembler
+  text, and `as`.
+
+### Link 8: bit-exact tests
+
+`scripts/AsmTest.lean` (`asm_test`) compares the engine's output with `refTransform` word
+for word, in both directions, in place and out of place:
+
+* `asm_test K`: every radix sequence of every N = 2^6 … 2^K, with and without cache blocking
+  and prefetching (`asm_test 10`: 7,424 plans run);
+* `asm_test small`: the direct and two-pass kernels (596 plans);
+* `asm_test stk MAXN`: the Stockham and blocked schedules over mixed radices (3,408 runs
+  to 120);
+* `asm_test plan LO HI` and `asm_test mixed LO HI [N…]`: the plan the planner actually
+  picks, for powers of two and for every size with prime factors at most 13.
+
+Each butterfly performs the same operations on the same values as `refTransform`; the
+engine only reorders memory traffic. That is why the output is expected to be, and is
+tested to be, identical bit for bit. libbench2 `--verify` additionally checks the planner's
+choice against FFTW's own linearity, impulse and shift tests. A test is evidence for the
+inputs it runs, not a proof for all inputs, and that is the remaining gap between the
+proofs and the running code.
+
+Also trusted as is: the twiddle tables. They are computed by Lean (`Trig.cosSin2PiTable`),
+so the engine and `refTransform` use the same values. Their accuracy (τ) is a hypothesis of
+the error theorems, not proved. It is measured at 0.502 ulp (`asm_test twdump` with
+`tools/twcheck.py`), and the kernel constants (κ) at 0.945 ulp (`tools/kappa.py`).
+
+Planning (`Asm/Planner.lean`) enumerates candidates, orders and prunes them by the proved
+operation counts, measures, and chooses. A planning mistake can make a transform slow, not
+wrong.
 
 ### The Lean-compiled backend (`LeanFFTW/Native`)
 
 A second executor for powers of two, written entirely in Lean and compiled by Lean's own
 compiler (no hand-written C). `Native.exec` is a safe function defined as the proved
 schedule, so `exec_eq_refTransform` is a theorem about it. The code the compiler runs is
-its `@[implemented_by]` implementation `execU`, which is trusted the same way as the C
-engine (link 7) and tested the same way:
+its `@[implemented_by]` implementation `execU`, which is trusted and tested bit for bit:
 
 * the kernels in `Native/Kernels.lean` are printed by `Gen/LeanEmit.lean` from the same
-  `Kernel` values as the C kernels, one `let` per operation, constants as their exact bits;
+  `Kernel` values as the assembly engine's blocks, one `let` per operation, constants as
+  their exact bits;
 * `Native/Prim.lean` holds the whole unsafe surface: an unchecked read, a store without
   bounds or sharing checks, an uninitialized allocation (marked `never_extract` so the
   compiler cannot merge two of them, a bug the bit-exact test caught), and a constant
@@ -115,8 +134,9 @@ applies to FFTW.
 
 libbench2 and `check.pl` come unmodified from the FFTW 3.3.10 source distribution
 (sha256 in [FFTW_INVENTORY.md](FFTW_INVENTORY.md)). The Lean FFTW backend
-(`bench/backends/bench-leanfftw.c`) is the only new C code in the harness. FFTW itself
-is built only as a competitor and is never linked into Lean FFTW.
+(`bench/backends/bench-leanfftw.c`) is the only new C code in the harness, and the only C
+in the repository. FFTW itself is built only as a competitor and is never linked into Lean
+FFTW.
 
 ## Axioms
 

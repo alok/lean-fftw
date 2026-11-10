@@ -14,7 +14,7 @@ It has two semantics:
   compute DFTs, and
 * binary64, `SExpr.evalF`, with Lean `Float` operations (each IEEE-rounded, `fma` with a
   single rounding). The emitted C code performs exactly these operations, operand for
-  operand, so `evalF` is the reference the C kernels are tested against bit for bit.
+  operand, so `evalF` is the reference the emitted kernels are checked and tested against bit for bit.
 
 Constants are `cos (2πk/n)` and `sin (2πk/n)` with `0 < k/n < 1/4`, `√2/2`, and
 `tan (2πk/n)` with `0 < k/n < 1/8`, whose binary64 values come from the exact integer

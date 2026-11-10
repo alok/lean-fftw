@@ -1,7 +1,8 @@
-/* libbench2 backend for the Lean FFTW library: the fast engine (Lean-generated SIMD
- * Stockham kernels, see csrc/) for 1-D complex transforms with unit stride,
- * interleaved, in-place or out-of-place, of sizes N whose prime factors are at most 13, and
- * the generic engine for everything else.
+/* libbench2 backend for the Lean FFTW library: the assembly engine (AVX-512 code written by
+ * Lean, LeanFFTW/Asm) for 1-D complex transforms with unit stride, interleaved, in-place or
+ * out-of-place, of sizes N whose prime factors are at most 13, and the generic engine for
+ * everything else. This adapter is the only C in the repository: it marshals libbench2's
+ * problems and calls the library.
  *
  * Generic engine (pure Lean, compiled by Lean):
  *
@@ -20,7 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "lf_lean.h"
 
 extern lean_object *lfftw_generic_plan(lean_object *spec);
 extern lean_object *lfftw_generic_exec(lean_object *pp, lean_object *inp, lean_object *out);
@@ -30,7 +30,7 @@ extern void lean_initialize_runtime_module(void);
 BEGIN_BENCH_DOC
 BENCH_DOC("name", "lean-fftw")
 BENCH_DOC("version", "0.1.0")
-BENCH_DOC("notes", "fast engine: Lean-generated AVX-512/AVX2 Stockham kernels; generic Lean engine elsewhere")
+BENCH_DOC("notes", "assembly engine: AVX-512 code generated and checked by Lean; generic Lean engine elsewhere")
 END_BENCH_DOC
 
 typedef struct {
@@ -211,8 +211,13 @@ static void generic_done(bench_problem *p)
 
 void main_init(int *argc, char ***argv)
 {
+     lean_object *res;
      UNUSED(argc); UNUSED(argv);
-     lf_lean_init();
+     lean_initialize_runtime_module();
+     res = initialize_lean_x2dfftw_LeanFFTW_FFI(1);
+     if (lean_io_result_is_ok(res)) lean_dec_ref(res);
+     else { lean_io_result_show_error(res); lean_dec(res); abort(); }
+     lean_io_mark_end_initialization();
 }
 
 /* ---- assembly engine (LeanFFTW/Asm): the plan is a Lean FloatArray of records ---- */
@@ -229,7 +234,6 @@ static int threads_set = 0;
 static int asm_setup(size_t n, int fwd, double *in, double *out)
 {
      lean_object *res, *mem;
-     if (getenv("LF_NO_ASM")) return 0;
      if (nthreads > 1 && !threads_set) {
           /* the workers are Lean tasks */
           lean_init_task_manager();
@@ -244,9 +248,6 @@ static int asm_setup(size_t n, int fwd, double *in, double *out)
      return 1;
 }
 
-/* ---- fast engine ---- */
-
-static lf_plan *fplan = 0;
 static double *fin, *fout;
 
 static int fast_ok(const bench_problem *p)
@@ -256,7 +257,7 @@ static int fast_ok(const bench_problem *p)
      if (p->sz->rnk != 1 || p->vecsz->rnk != 0) return 0;
      if (p->sz->dims[0].is != 1 || p->sz->dims[0].os != 1) return 0;
      n = (size_t) p->sz->dims[0].n;
-     if (n < 1 || n > ((size_t) 1 << 24)) return 0;
+     if (n < 2 || n > ((size_t) 1 << 24)) return 0;
      /* prime factors with generated radices: 2, 3, 5, 7, 11, 13 */
      {
           static const size_t ps[] = { 2, 3, 5, 7, 11, 13 };
@@ -268,18 +269,11 @@ static int fast_ok(const bench_problem *p)
 
 void setup(bench_problem *p)
 {
-     if (fast_ok(p)) {
-          /* plan on the problem's own arrays, as FFTW does; libbench2 zeroes them after setup */
-          if (asm_setup((size_t) p->sz->dims[0].n, p->sign < 0, (double *) p->in, (double *) p->out)) {
-               fin = (double *) p->in; fout = (double *) p->out;
-               return;
-          }
-          fplan = lf_plan_measure_arrays((size_t) p->sz->dims[0].n, p->sign < 0,
-                                         (double *) p->in, (double *) p->out, 0, 0);
-          if (fplan) {
-               fin = (double *) p->in; fout = (double *) p->out;
-               return;
-          }
+     /* plan on the problem's own arrays, as FFTW does; libbench2 zeroes them after setup */
+     if (fast_ok(p) && asm_setup((size_t) p->sz->dims[0].n, p->sign < 0,
+                                 (double *) p->in, (double *) p->out)) {
+          fin = (double *) p->in; fout = (double *) p->out;
+          return;
      }
      generic_setup(p);
 }
@@ -293,20 +287,12 @@ void doit(int iter, bench_problem *p)
           for (int it = 0; it < iter; ++it) lfa_call(rec, i, o);
           return;
      }
-     if (fplan) {
-          lf_plan *pl = fplan;
-          const double *i = fin;
-          double *o = fout;
-          for (int it = 0; it < iter; ++it) lf_execute(pl, i, o);
-          return;
-     }
      generic_doit(iter, p);
 }
 
 void done(bench_problem *p)
 {
      if (aplan) { lean_dec(aplan); aplan = 0; return; }
-     if (fplan) { lf_destroy(fplan); fplan = 0; return; }
      generic_done(p);
 }
 

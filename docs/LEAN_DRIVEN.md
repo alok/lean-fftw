@@ -1,5 +1,10 @@
 # Lean-driven code generation (round of 2026-11-07)
 
+> **Historical.** This document describes the library as of the date in its title, when
+> the fast engine was C printed by Lean (`csrc/`, `tools/c/`). That engine was removed on
+> 2026-11-10 in favour of assembly written by Lean (`LeanFFTW/Asm`); the files named here
+> are in the history up to commit `7cc9489`. See [TRUST.md](TRUST.md) for the current state.
+
 The goal of this round: Lean, not C, should drive the code generation and the optimization.
 That means more of the library's decisions made and checked in Lean, and a test of how fast
 Lean's own compiler can make an FFT. In the spirit of FFTW's genfft, but with proofs and
