@@ -26,6 +26,9 @@ LABELS = {
     "lean-i7": "i7  proved tan-factored twiddles: fewer ops in radix 16/32",
     "lean-i8": "i8  proved radix 3-15 kernels: odd sizes in the fast engine",
     "lean-i9": "i9  64-byte code alignment",
+    "lean-i10": "i10  planner and in-place schedule driven from Lean",
+    "lean-i11": "i11  no C: AVX-512 assembly written and checked by Lean",
+    "lean-i12": "i12  allocator guided by the proved port cost model",
 }
 FFTW = ["fftw-measure", "fftw-patient", "fftw-exhaustive"]
 W, H = 960, 640
@@ -106,7 +109,8 @@ def main(d, out):
         dr.text((L, H - 95), f"G = geometric mean of time(Lean) / time(FFTW): {s['G']:.3f}",
                 font=f14, fill=(60, 60, 60))
         dr.text((L, H - 75), f"95% CI [{lo:.3f}, {hi:.3f}]: {verdict}", font=f14, fill=(60, 60, 60))
-        dr.text((L, H - 45), "faded: earlier iterations; grey: MKL (sequential)", font=f12,
+        dr.text((L, H - 45), "faded: earlier iterations" +
+                ("; grey: MKL (sequential)" if "mkl" in speed else ""), font=f12,
                 fill=(120, 120, 120))
         # G history, bottom right
         gx, gy, gw, gh = W - R - 250, H - 118, 250, 100
