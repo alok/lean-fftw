@@ -98,8 +98,11 @@ FFTW's time over the powers of two, with FFTW still 3–7% ahead at N = 256, 512
 2^18 became 7% faster on geometric mean ([docs/COST_MODEL.md](docs/COST_MODEL.md)), and the
 in-place schedule now covers sizes that are not powers of two: ten such sizes from 360 to
 50000 run at 0.73–1.04× FFTW's time, geometric mean 0.89 (before: 0.71–1.50×, geometric mean
-1.07; N = 50000 went from 1.50× to 1.04×). A protocol run with confidence intervals is still
-to come.
+1.07; N = 50000 went from 1.50× to 1.04×). With threads (4 virtual CPUs, FFTW patient built
+with `--enable-threads`, N = 4096 to 2^18): 0.52–0.72× FFTW's time at 2 threads and
+0.28–0.77× at 4; the engine itself gains 2.6–2.9× from 1 to 4 threads at 2^16 and 2^18 and
+under 1.2× at 16384 and below. The numbers are in `results/emr-quick`. A protocol run with
+confidence intervals is still to come.
 
 ## How the pieces fit
 

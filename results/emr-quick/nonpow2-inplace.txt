@@ -1,0 +1,11 @@
+     360 fftw       381.8 bench-lean.old       362.3 bench-lean       319.4  ratios 0.949 0.837
+    1000 fftw      1320.0 bench-lean.old      1480.0 bench-lean      1040.0  ratios 1.121 0.788
+    1200 fftw      1390.0 bench-lean.old      1750.0 bench-lean      1240.0  ratios 1.259 0.892
+    1500 fftw      2350.0 bench-lean.old      2560.0 bench-lean      2330.0  ratios 1.089 0.991
+    3000 fftw      4490.0 bench-lean.old      5110.0 bench-lean      4030.0  ratios 1.138 0.898
+    5000 fftw      9040.0 bench-lean.old      9620.0 bench-lean      8660.0  ratios 1.064 0.958
+    6561 fftw     22560.0 bench-lean.old     16060.0 bench-lean     16360.0  ratios 0.712 0.725
+   10000 fftw     20660.0 bench-lean.old     18490.0 bench-lean     19660.0  ratios 0.895 0.952
+   20000 fftw     41560.0 bench-lean.old     47510.0 bench-lean     36020.0  ratios 1.143 0.867
+   50000 fftw    141190.0 bench-lean.old    211460.0 bench-lean    146460.0  ratios 1.498 1.037
+geomean vs fftw bench-lean.old 1.068 bench-lean 0.890

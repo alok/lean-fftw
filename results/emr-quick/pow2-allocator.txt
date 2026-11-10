@@ -1,0 +1,14 @@
+      16 bench-lean.old         6.9 bench-lean.e0         6.6 bench-lean         6.2  ratios 0.962 0.908
+      32 bench-lean.old        14.8 bench-lean.e0        16.1 bench-lean        14.4  ratios 1.092 0.979
+      64 bench-lean.old        33.1 bench-lean.e0        40.0 bench-lean        33.7  ratios 1.209 1.020
+     128 bench-lean.old        78.1 bench-lean.e0        76.0 bench-lean        77.9  ratios 0.973 0.997
+     256 bench-lean.old       192.5 bench-lean.e0       190.0 bench-lean       191.8  ratios 0.987 0.997
+     512 bench-lean.old       442.6 bench-lean.e0       451.6 bench-lean       413.7  ratios 1.020 0.935
+    1024 bench-lean.old       979.4 bench-lean.e0      1000.0 bench-lean       910.1  ratios 1.021 0.929
+    2048 bench-lean.old      2420.0 bench-lean.e0      2420.0 bench-lean      2390.0  ratios 1.000 0.988
+    4096 bench-lean.old      6950.0 bench-lean.e0      6400.0 bench-lean      5580.0  ratios 0.921 0.803
+    8192 bench-lean.old     14430.0 bench-lean.e0     12900.0 bench-lean     12380.0  ratios 0.894 0.858
+   16384 bench-lean.old     30760.0 bench-lean.e0     28030.0 bench-lean     24800.0  ratios 0.911 0.806
+   65536 bench-lean.old    202050.0 bench-lean.e0    206460.0 bench-lean    193220.0  ratios 1.022 0.956
+  262144 bench-lean.old   1140000.0 bench-lean.e0   1160000.0 bench-lean   1040000.0  ratios 1.018 0.912
+geomean vs bench-lean.old bench-lean.e0 0.999 bench-lean 0.927

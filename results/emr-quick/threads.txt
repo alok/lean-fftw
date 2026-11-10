@@ -1,0 +1,4 @@
+    4096 t1 fftw       7.4 asm       6.2 us r 0.83 | t2 fftw       7.5 asm       5.4 us r 0.72 | t4 fftw       6.7 asm       5.2 us r 0.77
+   16384 t1 fftw      33.7 asm      29.7 us r 0.88 | t2 fftw      33.2 asm      21.3 us r 0.64 | t4 fftw      41.7 asm      25.5 us r 0.61
+   65536 t1 fftw     212.4 asm     179.7 us r 0.85 | t2 fftw     195.8 asm     101.6 us r 0.52 | t4 fftw     224.3 asm      61.7 us r 0.28
+  262144 t1 fftw    1360.0 asm    1090.0 us r 0.80 | t2 fftw     942.4 asm     681.8 us r 0.72 | t4 fftw     599.2 asm     424.9 us r 0.71
